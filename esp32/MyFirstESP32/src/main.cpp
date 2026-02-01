@@ -11,6 +11,10 @@ const int backend_port = 8080;            // The port your laptop server listens
 // The ESP32 Load Balancer Port
 const int listen_port = 80;
 
+// Define a buffer size (Standard Ethernet packet is ~1500, so 1024 is safe)
+const int buffSize = 1024;
+uint8_t buffer[buffSize];
+
 WiFiServer publicServer(listen_port);
 
 void setup() {
@@ -46,16 +50,38 @@ void loop() {
             // --- The Bridge Loop ---
             // Keep looping while both sides are connected
             while (client.connected() && backend.connected()) {
-                // 1. Client -> ESP32 -> Backend
-                if (client.available()) {
-                    char c = client.read();
-                    backend.write(c);
+                // 1. Client -> Backend (Downstream)
+                int lenC = client.available();
+                if (lenC > 0) {
+                    // Don't read more than the buffer can hold
+                    if (lenC > buffSize) lenC = buffSize;
+                    
+                    // Read into buffer
+                    client.read(buffer, lenC);
+                    
+                    // Write buffer to backend
+                    backend.write(buffer, lenC);
+                    
+                    // (Optional) Print to Serial so you can see the "String"
+                    Serial.write(buffer, lenC); 
+
+                    for (int i = 0; i < lenC - 2; i++) {
+                        // Check if bytes at i, i+1, i+2 match 'E', 'N', 'D'
+                        if (buffer[i] == 'E' && buffer[i+1] == 'N' && buffer[i+2] == 'D') {
+                            Serial.println("\n[Control] END received. Terminating.");
+                            client.stop(); // This will break the while loop
+                            break;
+                        }
+                    }
                 }
 
-                // 2. Backend -> ESP32 -> Client
-                if (backend.available()) {
-                    char c = backend.read();
-                    client.write(c);
+                // 2. Backend -> Client (Upstream)
+                int lenB = backend.available();
+                if (lenB > 0) {
+                    if (lenB > buffSize) lenB = buffSize;
+                    
+                    backend.read(buffer, lenB);
+                    client.write(buffer, lenB);
                 }
             }
             backend.stop();
