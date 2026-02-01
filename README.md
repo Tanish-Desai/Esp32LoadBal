@@ -48,7 +48,3 @@ This project demonstrates how an embedded device can act as a **Gateway** betwee
 If the ESP32 fails to connect to the backend, check your Windows Network settings.
 * **The Issue:** Windows Firewall often blocks incoming connections on private ports (8080/8081) if the Wi-Fi network is set to **"Public"**.
 * **The Fix:** Change your Wi-Fi network profile from **Public** to **Private** in Windows settings, or manually allow the port through the firewall.
-
-## 📄 License
-
-[MIT](LICENSE)
