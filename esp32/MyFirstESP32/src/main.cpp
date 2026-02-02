@@ -1,11 +1,8 @@
 #include <WiFi.h>
-
-// --- Configuration ---
-const char* ssid = "Superhungry";
-const char* password = "tea34320";
+#include<WiFiManager.h>
 
 // The "Real" Server (Your Laptop)
-const char* backend_ip1 = "10.176.160.78"; // CHANGE THIS to your laptop's IP
+const char* backend_ip1 = "10.138.112.78"; // CHANGE THIS to your laptop's IP
 const int backend_port1 = 8080;            // The port your laptop server listens on
 
 const char* backend_ip2 = backend_ip1;
@@ -24,16 +21,16 @@ WiFiServer publicServer(listen_port);
 void setup() {
     Serial.begin(115200);
 
-    // 1. Connect to WiFi
-    Serial.print("Connecting to WiFi");
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
+    WiFiManager wm;
+    bool success = wm.autoConnect("ESP32 Web Portal");
+    if(!success){
+        Serial.println("Failed to connect or hit timeout");
+        // ESP.restart();
+    }else{
+        Serial.println("\n\nConnected...");
+        Serial.print("Local IP Address: ");
+        Serial.println(WiFi.localIP());
     }
-    Serial.println("\nWiFi Connected.");
-    Serial.print("ESP32 Load Balancer IP: ");
-    Serial.println(WiFi.localIP());
 
     // 2. Start listening for Clients
     publicServer.begin();
