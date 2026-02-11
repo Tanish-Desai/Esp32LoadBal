@@ -1,11 +1,12 @@
 #include <WiFi.h>
 #include<WiFiManager.h>
+#include<Preferences.h>
 
 // The "Real" Server (Your Laptop)
-const char* backend_ip1 = "10.138.112.78"; // CHANGE THIS to your laptop's IP
+String backend_ip1; // CHANGE THIS to your laptop's IP
 const int backend_port1 = 8080;            // The port your laptop server listens on
 
-const char* backend_ip2 = backend_ip1;
+String backend_ip2;
 const int backend_port2 = 8081;
 
 // The ESP32 Load Balancer Port
@@ -15,13 +16,27 @@ const int listen_port = 80;
 const int buffSize = 1024;
 uint8_t buffer[buffSize];
 
+// temporary server_ip string for portal purposes
+String server_ip;
+Preferences preferences;
+String set_server_ip();
+
 bool server2 = false;
 WiFiServer publicServer(listen_port);
 
 void setup() {
     Serial.begin(115200);
 
+    // Initialize Storage
+    preferences.begin("config", false);
+    server_ip = preferences.getString("server_ip", "192.168.1.100");
+
     WiFiManager wm;
+
+    // adds server ip param to portal
+    WiFiManagerParameter custom_server_ip("server", "Laptop IP", server_ip.c_str(), 16);
+    wm.addParameter(&custom_server_ip);
+
     bool success = wm.autoConnect("ESP32 Web Portal");
     if(!success){
         Serial.println("Failed to connect or hit timeout");
@@ -30,6 +45,11 @@ void setup() {
         Serial.println("\n\nConnected...");
         Serial.print("Local IP Address: ");
         Serial.println(WiFi.localIP());
+
+        server_ip = custom_server_ip.getValue();
+        
+        // Save the IP from portal to preferences
+        preferences.putString("server_ip", server_ip);
     }
 
     // 2. Start listening for Clients
@@ -39,6 +59,8 @@ void setup() {
 void loop() {
     // Check if a client has connected to the ESP32
     WiFiClient client = publicServer.available();
+    backend_ip1 = server_ip;
+    backend_ip2 = server_ip;
 
     if (client) {
 
@@ -52,11 +74,11 @@ void loop() {
         // Attempt to connect to the Backend Server (Laptop)
         WiFiClient backend;
 
-        // Load Balancing: (const as compiler doesn't allow otherwise)
-        const char* backend_ip = server2 ? backend_ip2 : backend_ip1;
+        // Load Balancing:
+        String backend_ip = server2 ? backend_ip2 : backend_ip1;
         const int backend_port = server2 ? backend_port2 : backend_port1;
 
-        if (backend.connect(backend_ip, backend_port)) {
+        if (backend.connect(backend_ip.c_str(), backend_port)) {
             Serial.println("Connected to Backend Server. Bridging traffic...");
 
             // --- The Bridge Loop ---
@@ -104,10 +126,29 @@ void loop() {
             Serial.print(backend_ip);
             Serial.print(":");
             Serial.println(backend_port);
-            client.println("HTTP/1.1 502 Bad Gateway");
-            client.println("Connection: close");
-            client.println();
+
+            Serial.print("\nEnter server ip: ");
+            server_ip = set_server_ip();
+            preferences.putString("server_ip", server_ip);
+            Serial.print("\nNew server IP: ");
+            Serial.println(server_ip);
         }
         client.stop();
     }
+}
+
+String set_server_ip(){
+    while(Serial.available()) Serial.read(); // clear Serial buffer
+
+    String input = "";
+    while(true){
+        if(Serial.available()){
+            char c = Serial.read();
+            if(c == '\n') break;
+            input += c;
+        }
+        delay(10); // to prevent watchdog timeout errors
+    }
+    input.trim();
+    return input;
 }
