@@ -17,12 +17,20 @@ server_socket.bind(('0.0.0.0', port))
 # Listen for incoming connections
 server_socket.listen(1)
 
+# Set a timeout so KeyboardInterrupt can be handled properly
+server_socket.settimeout(1.0)
+
 print(f"Server listening on port {port}... (Press Ctrl+C to stop)")
 
 while True:
     try:
         # Accept one client connection
-        client_socket, client_address = server_socket.accept()
+        try:
+            client_socket, client_address = server_socket.accept()
+        except socket.timeout:
+            # Timeout reached, continue to check for KeyboardInterrupt
+            continue
+        
         print(f"Client connected from {client_address}")
         
         # Handle multiple messages from the same client
