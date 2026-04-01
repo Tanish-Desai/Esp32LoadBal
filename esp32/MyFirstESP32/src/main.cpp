@@ -12,7 +12,7 @@ const int backend_port2 = 8081;
 // The ESP32 Load Balancer Port
 const int listen_port = 80;
 
-// Define a buffer size (Standard Ethernet packet is ~1500, so 1024 is safe)
+// Define a buffer size
 const int buffSize = 1024;
 uint8_t buffer[buffSize];
 
@@ -21,8 +21,18 @@ String server_ip;
 Preferences preferences;
 String set_server_ip();
 
-bool server2 = false;
 WiFiServer publicServer(listen_port);
+
+// --- GLOBAL CLIENTS TO KEEP CONNECTION ALIVE ---
+WiFiClient g_client1;
+WiFiClient g_backend1;
+
+WiFiClient g_client2;
+WiFiClient g_backend2;
+// -----------------------------------------------
+
+// Forward Declaring funcs
+void talk(WiFiClient& c1, WiFiClient& c2);
 
 void setup() {
     Serial.begin(115200);
@@ -37,103 +47,134 @@ void setup() {
     WiFiManagerParameter custom_server_ip("server", "Laptop IP", server_ip.c_str(), 16);
     wm.addParameter(&custom_server_ip);
 
+    wm.setSaveConfigCallback([&]() {
+        server_ip = custom_server_ip.getValue();
+        preferences.putString("server_ip", server_ip);
+        Serial.println("Saved new server IP: " + server_ip);
+    });
+
     bool success = wm.autoConnect("ESP32 Web Portal");
     if(!success){
         Serial.println("Failed to connect or hit timeout");
-        // ESP.restart();
     }else{
         Serial.println("\n\nConnected...");
         Serial.print("Local IP Address: ");
         Serial.println(WiFi.localIP());
 
+        // (We also update it here just in case WiFiManager returns without rebooting)
         server_ip = custom_server_ip.getValue();
-        
-        // Save the IP from portal to preferences
         preferences.putString("server_ip", server_ip);
     }
 
-    // 2. Start listening for Clients
     publicServer.begin();
+    
+    // Set backend IPs here once
+    backend_ip1 = server_ip;
+    backend_ip2 = server_ip;
 }
 
 void loop() {
-    // Check if a client has connected to the ESP32
-    WiFiClient client = publicServer.available();
-    backend_ip1 = server_ip;
-    backend_ip2 = server_ip;
+    // 1. Check for ANY new incoming client
+    WiFiClient newClient = publicServer.available();
 
-    if (client) {
-
-        // potato load balancer (simply switches servers for each client)
-        server2 = !server2; 
-        Serial.print("Server switched to ");
-        Serial.println(server2?8081:8080);
-
-        Serial.println("\nNew Client Connected to ESP32.");
-
-        // Attempt to connect to the Backend Server (Laptop)
-        WiFiClient backend;
-
-        // Load Balancing:
-        String backend_ip = server2 ? backend_ip2 : backend_ip1;
-        const int backend_port = server2 ? backend_port2 : backend_port1;
-
-        if (backend.connect(backend_ip.c_str(), backend_port)) {
-            Serial.println("Connected to Backend Server. Bridging traffic...");
-
-            // --- The Bridge Loop ---
-            // Keep looping while both sides are connected
-            while (client.connected() && backend.connected()) {
-                // 1. Client -> Backend (Downstream)
-                int lenC = client.available();
-                if (lenC > 0) {
-                    // Don't read more than the buffer can hold
-                    if (lenC > buffSize) lenC = buffSize;
-                    
-                    // Read into buffer
-                    client.read(buffer, lenC);
-                    
-                    // Write buffer to backend
-                    backend.write(buffer, lenC);
-                    
-                    // (Optional) Print to Serial so you can see the "String"
-                    Serial.write(buffer, lenC); 
-
-                    for (int i = 0; i < lenC - 2; i++) {
-                        // Check if bytes at i, i+1, i+2 match 'E', 'N', 'D'
-                        if (buffer[i] == 'E' && buffer[i+1] == 'N' && buffer[i+2] == 'D') {
-                            Serial.println("\n[Control] END received. Terminating.");
-                            client.stop(); // This will break the while loop
-                            break;
-                        }
+    if (newClient) {
+        Serial.println("New connection request received...");
+        
+        // Try to assign to Slot 1
+        if (!g_client1 || !g_client1.connected()) {
+            Serial.println("Assigning to Slot 1 (Port 8080)");
+            g_client1 = newClient; // Move connection to global
+            
+            // Connect Backend 1
+            if (g_backend1.connect(backend_ip1.c_str(), backend_port1)) {
+                Serial.println("Backend 1 Connected");
+            } else {
+                Serial.printf("Backend 1 Failed (%s:%d). Trying Backend 2...\n", backend_ip1.c_str(), backend_port1);
+                if (g_backend1.connect(backend_ip2.c_str(), backend_port2)) {
+                    Serial.println("Connected to Backend 2 instead");
+                } else {
+                    Serial.println("Backend 2 also failed. Please enter correct Laptop IP:");
+                    String new_ip = set_server_ip();
+                    if(new_ip.length() > 0) {
+                        server_ip = new_ip;
+                        backend_ip1 = server_ip;
+                        backend_ip2 = server_ip;
+                        preferences.putString("server_ip", server_ip);
+                        Serial.println("Saved new server IP: " + server_ip);
                     }
-                }
-
-                // 2. Backend -> Client (Upstream)
-                int lenB = backend.available();
-                if (lenB > 0) {
-                    if (lenB > buffSize) lenB = buffSize;
-                    
-                    backend.read(buffer, lenB);
-                    client.write(buffer, lenB);
+                    g_client1.stop();
                 }
             }
-            backend.stop();
-            Serial.println("Session Closed.\n");
-        } else {
-            Serial.println("Failed to connect to Backend Server.");
-            Serial.print("Backend IP:Port - ");
-            Serial.print(backend_ip);
-            Serial.print(":");
-            Serial.println(backend_port);
-
-            Serial.print("\nEnter server ip: ");
-            server_ip = set_server_ip();
-            preferences.putString("server_ip", server_ip);
-            Serial.print("\nNew server IP: ");
-            Serial.println(server_ip);
         }
-        client.stop();
+        // If Slot 1 is busy, try Slot 2
+        else if (!g_client2 || !g_client2.connected()) {
+            Serial.println("Assigning to Slot 2 (Port 8081)");
+            g_client2 = newClient; // Move connection to global
+
+            // Connect Backend 2
+            if (g_backend2.connect(backend_ip2.c_str(), backend_port2)) {
+                Serial.println("Backend 2 Connected");
+            } else {
+                Serial.printf("Backend 2 Failed (%s:%d). Trying Backend 1...\n", backend_ip2.c_str(), backend_port2);
+                if (g_backend2.connect(backend_ip1.c_str(), backend_port1)) {
+                    Serial.println("Connected to Backend 1 instead");
+                } else {
+                    Serial.println("Backend 1 also failed. Please enter correct Laptop IP:");
+                    String new_ip = set_server_ip();
+                    if(new_ip.length() > 0) {
+                        server_ip = new_ip;
+                        backend_ip1 = server_ip;
+                        backend_ip2 = server_ip;
+                        preferences.putString("server_ip", server_ip);
+                        Serial.println("Saved new server IP: " + server_ip);
+                    }
+                    g_client2.stop();
+                }
+            }
+        }
+        else {
+            Serial.println("Server Full! Rejecting client.");
+            newClient.stop();
+        }
+    }
+
+    // 2. Handle Data Traffic for Slot 1
+    if (g_client1.connected() && g_backend1.connected()) {
+        talk(g_client1, g_backend1);
+        talk(g_backend1, g_client1);
+    } else {
+        // Clean up if one side disconnects
+        if (g_client1) g_client1.stop();
+        if (g_backend1) g_backend1.stop();
+    }
+
+    // 3. Handle Data Traffic for Slot 2
+    if (g_client2.connected() && g_backend2.connected()) {
+        talk(g_client2, g_backend2);
+        talk(g_backend2, g_client2);
+    } else {
+        // Clean up if one side disconnects
+        if (g_client2) g_client2.stop();
+        if (g_backend2) g_backend2.stop();
+    }
+}
+
+void talk(WiFiClient& c1, WiFiClient& c2){
+    // assuming both clients are connected
+    // esp32 routes data from c1 to c2
+    int len = c1.available();
+    if(len > 0){
+        if(len > buffSize) len = buffSize;
+
+        c1.read(buffer, len);
+        c2.write(buffer, len);
+        Serial.write(buffer, len);
+        for(int i=0; i<len - 2; i++){
+            if(buffer[i] == 'E' && buffer[i+1] == 'N' && buffer[i+2] == 'D'){
+                Serial.println("[CONTROL] END received. Terminating...");
+                c1.stop();
+            }
+        }
     }
 }
 
