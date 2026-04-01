@@ -3,11 +3,9 @@
 #include<Preferences.h>
 
 // The "Real" Server (Your Laptop)
-String backend_ip1; // CHANGE THIS to your laptop's IP
-const int backend_port1 = 8080;            // The port your laptop server listens on
-
-String backend_ip2;
-const int backend_port2 = 8081;
+const int MAX_BACKENDS = 5;
+int num_backends = 1;
+int backend_ports[MAX_BACKENDS] = {8080, 8081, 8082, 8083, 8084};
 
 // The ESP32 Load Balancer Port
 const int listen_port = 80;
@@ -24,15 +22,14 @@ String set_server_ip();
 WiFiServer publicServer(listen_port);
 
 // --- GLOBAL CLIENTS TO KEEP CONNECTION ALIVE ---
-WiFiClient g_client1;
-WiFiClient g_backend1;
-
-WiFiClient g_client2;
-WiFiClient g_backend2;
+const int MAX_CLIENTS = 10;
+WiFiClient g_clients[MAX_CLIENTS];
+WiFiClient g_backends[MAX_CLIENTS];
 // -----------------------------------------------
 
 // Forward Declaring funcs
 void talk(WiFiClient& c1, WiFiClient& c2);
+int get_num_backends();
 
 void setup() {
     Serial.begin(115200);
@@ -68,9 +65,8 @@ void setup() {
 
     publicServer.begin();
     
-    // Set backend IPs here once
-    backend_ip1 = server_ip;
-    backend_ip2 = server_ip;
+    num_backends = get_num_backends();
+    Serial.printf("Configured for %d backends.\n", num_backends);
 }
 
 void loop() {
@@ -79,83 +75,59 @@ void loop() {
 
     if (newClient) {
         Serial.println("New connection request received...");
+        bool assigned = false;
+        static int current_backend_idx = 0;
         
-        // Try to assign to Slot 1
-        if (!g_client1 || !g_client1.connected()) {
-            Serial.println("Assigning to Slot 1 (Port 8080)");
-            g_client1 = newClient; // Move connection to global
-            
-            // Connect Backend 1
-            if (g_backend1.connect(backend_ip1.c_str(), backend_port1)) {
-                Serial.println("Backend 1 Connected");
-            } else {
-                Serial.printf("Backend 1 Failed (%s:%d). Trying Backend 2...\n", backend_ip1.c_str(), backend_port1);
-                if (g_backend1.connect(backend_ip2.c_str(), backend_port2)) {
-                    Serial.println("Connected to Backend 2 instead");
-                } else {
-                    Serial.println("Backend 2 also failed. Please enter correct Laptop IP:");
-                    String new_ip = set_server_ip();
-                    if(new_ip.length() > 0) {
-                        server_ip = new_ip;
-                        backend_ip1 = server_ip;
-                        backend_ip2 = server_ip;
-                        preferences.putString("server_ip", server_ip);
-                        Serial.println("Saved new server IP: " + server_ip);
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (!g_clients[i] || !g_clients[i].connected()) {
+                Serial.printf("Assigning to Slot %d\n", i + 1);
+                g_clients[i] = newClient; // Move connection to global
+                
+                // Connect Backend
+                bool backend_connected = false;
+                for (int j = 0; j < num_backends; j++) {
+                    int port_idx = (current_backend_idx + j) % num_backends;
+                    if (g_backends[i].connect(server_ip.c_str(), backend_ports[port_idx])) {
+                        Serial.printf("Backend Connected (Port %d)\n", backend_ports[port_idx]);
+                        backend_connected = true;
+                        current_backend_idx = (port_idx + 1) % num_backends;
+                        break;
+                    } else {
+                        Serial.printf("Backend Failed on Port %d. Trying next...\n", backend_ports[port_idx]);
                     }
-                    g_client1.stop();
                 }
-            }
-        }
-        // If Slot 1 is busy, try Slot 2
-        else if (!g_client2 || !g_client2.connected()) {
-            Serial.println("Assigning to Slot 2 (Port 8081)");
-            g_client2 = newClient; // Move connection to global
 
-            // Connect Backend 2
-            if (g_backend2.connect(backend_ip2.c_str(), backend_port2)) {
-                Serial.println("Backend 2 Connected");
-            } else {
-                Serial.printf("Backend 2 Failed (%s:%d). Trying Backend 1...\n", backend_ip2.c_str(), backend_port2);
-                if (g_backend2.connect(backend_ip1.c_str(), backend_port1)) {
-                    Serial.println("Connected to Backend 1 instead");
-                } else {
-                    Serial.println("Backend 1 also failed. Please enter correct Laptop IP:");
+                if (!backend_connected) {
+                    Serial.println("All backends failed. Please enter correct Laptop IP:");
                     String new_ip = set_server_ip();
                     if(new_ip.length() > 0) {
                         server_ip = new_ip;
-                        backend_ip1 = server_ip;
-                        backend_ip2 = server_ip;
                         preferences.putString("server_ip", server_ip);
                         Serial.println("Saved new server IP: " + server_ip);
                     }
-                    g_client2.stop();
+                    g_clients[i].stop();
                 }
+                
+                assigned = true;
+                break;
             }
         }
-        else {
+        
+        if (!assigned) {
             Serial.println("Server Full! Rejecting client.");
             newClient.stop();
         }
     }
 
-    // 2. Handle Data Traffic for Slot 1
-    if (g_client1.connected() && g_backend1.connected()) {
-        talk(g_client1, g_backend1);
-        talk(g_backend1, g_client1);
-    } else {
-        // Clean up if one side disconnects
-        if (g_client1) g_client1.stop();
-        if (g_backend1) g_backend1.stop();
-    }
-
-    // 3. Handle Data Traffic for Slot 2
-    if (g_client2.connected() && g_backend2.connected()) {
-        talk(g_client2, g_backend2);
-        talk(g_backend2, g_client2);
-    } else {
-        // Clean up if one side disconnects
-        if (g_client2) g_client2.stop();
-        if (g_backend2) g_backend2.stop();
+    // 2. Handle Data Traffic for all slots
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (g_clients[i] && g_clients[i].connected() && g_backends[i] && g_backends[i].connected()) {
+            talk(g_clients[i], g_backends[i]);
+            talk(g_backends[i], g_clients[i]);
+        } else {
+            if (g_clients[i]) g_clients[i].stop();
+            if (g_backends[i]) g_backends[i].stop();
+        }
     }
 }
 
@@ -192,4 +164,26 @@ String set_server_ip(){
     }
     input.trim();
     return input;
+}
+
+int get_num_backends(){
+    Serial.println("Enter number of backends available (1-5): ");
+    while(Serial.available()) Serial.read(); // clear buffer
+
+    String input = "";
+    while(true){
+        if(Serial.available()){
+            char c = Serial.read();
+            if(c == '\n' || c == '\r') {
+                if (input.length() > 0) break;
+                else continue;
+            }
+            input += c;
+        }
+        delay(10); // to prevent watchdog timeout errors
+    }
+    int n = input.toInt();
+    if (n < 1) n = 1;
+    if (n > 5) n = 5;
+    return n;
 }
