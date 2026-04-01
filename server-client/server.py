@@ -1,107 +1,142 @@
 import socket
 import threading
+import time
 
-def server_init(ip_address, port):
-    # SERVER 1: PORT 8080
-    # SERVER 2: PORT 8081
+class ManagedServer(threading.Thread):
+    def __init__(self, ip_address, port, event_callback=None):
+        super().__init__()
+        self.ip_address = ip_address
+        self.port = port
+        self.server_socket = None
+        self.running = False
+        self.stalled = False
+        self.client_threads = []
+        self.active_sockets = []
+        self.max_clients = 5
+        self.event_callback = event_callback
+        self.daemon = True # Closes when main thread closes
 
-    # Create a socket object
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def log_event(self, action, details=""):
+        # Send telemetry to the UI (action like "START", "REQUEST", "STOP")
+        if self.event_callback:
+            self.event_callback({
+                'server_port': self.port,
+                'action': action,
+                'details': details,
+                'timestamp': time.time()
+            })
+        print(f"[Server:{self.port}] {action} - {details}")
 
-    # Allow immediate reuse of the port (prevents "Address already in use" errors after restarting)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    # Bind the socket to given port on all network interfaces
-    server_socket.bind((ip_address, port))
-
-    # Listen for incoming connections
-    server_socket.listen(1)
-
-    # Set a timeout so KeyboardInterrupt can be handled properly
-    server_socket.settimeout(1.0)
-
-    print(f"[Server listening on port {port}...]")
-
-    # list to store threads that handle clients
-    client_threads = []
-    
-    while True:
+    def run(self):
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        
         try:
-            # Accept one client connection
-            try:
-                client_socket, client_address = server_socket.accept()
-            except socket.timeout:
-                # Timeout reached, continue to check for KeyboardInterrupt
-                continue
-            
-            print(f"[Client connected from {client_address}]")
-            client_thread = threading.Thread(target=handle_request, args=(client_socket, client_address))
-            client_threads.append(client_thread)
-            
-            client_thread.start()
-            
-            # # Handle multiple messages from the same client
-            # while True:
-            #     # Receive data (The HTTP Request from ESP32)
-            #     request = client_socket.recv(1024)
-                
-            #     # If no data is received, client has disconnected
-            #     if not request:
-            #         print("Client disconnected.\n")
-            #         break
-                
-            #     print(f"Received Request:\n{request.decode('utf-8', errors='ignore')}")
-
-            #     # Send a standard HTTP Response back
-            #     http_response = (
-            #         "HTTP/1.1 200 OK\r\n"
-            #         "Content-Type: text/plain\r\n"
-            #         "Connection: keep-alive\r\n"
-            #         "\r\n"
-            #     )
-            #     client_socket.sendall(http_response.encode('utf-8'))
-
-            # # Close the connection with this specific client
-            # client_socket.close()
-
-        except KeyboardInterrupt:
-            print("\n[Server stopping...]")
-            break
+            self.server_socket.bind((self.ip_address, self.port))
+            self.server_socket.listen(self.max_clients)
+            self.server_socket.settimeout(1.0)
+            self.running = True
+            self.log_event("START", f"Listening on {self.ip_address}:{self.port}")
         except Exception as e:
-            print(f"[Error: {e}]")
+            self.log_event("ERROR", f"Failed to bind: {e}")
+            return
 
-    for x in client_threads:
-        x.join()
-    server_socket.close()
+        while self.running:
+            if self.stalled:
+                time.sleep(0.5) # Still running but not accepting
+                continue
+                
+            try:
+                client_socket, client_address = self.server_socket.accept()
+                self.log_event("CONNECT", f"Client connected: {client_address}")
+                
+                client_thread = threading.Thread(target=self.handle_request, args=(client_socket, client_address))
+                client_thread.daemon = True
+                self.client_threads.append(client_thread)
+                client_thread.start()
+            except socket.timeout:
+                continue
+            except Exception as e:
+                # If socket is manually closed, this handles the exception
+                if self.running:
+                    self.log_event("ERROR", str(e))
+                break
 
-def handle_request(client_socket, client_address):
-    # Handle multiple messages from the same client
-    while True:
-        # Receive data (The HTTP Request from ESP32)
-        request = client_socket.recv(1024)
-        
-        # If no data is received, client has disconnected
-        if not request:
-            print("[Client disconnected.]\n")
-            break
-        
-        print(f"Received Request:\n{request.decode('utf-8', errors='ignore')}")
+        # Closure cleanup
+        self.log_event("STOP", "Server stopping...")
+        for sock in self.active_sockets:
+            try: sock.close()
+            except: pass
+        for t in self.client_threads:
+            t.join(timeout=1.0)
+        try: self.server_socket.close()
+        except: pass
 
-        # Send a standard HTTP Response back
-        http_response = (
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/plain\r\n"
-            "Connection: keep-alive\r\n"
-            "\r\n"
-        )
-        client_socket.sendall(http_response.encode('utf-8'))
+    def handle_request(self, client_socket, client_address):
+        self.active_sockets.append(client_socket)
+        try:
+            client_socket.settimeout(2.0) # Prevents infinite block on recv
+            while self.running and not self.stalled:
+                try:
+                    request = client_socket.recv(1024)
+                except socket.timeout:
+                    continue # Check if self.running still True
+                    
+                if not request:
+                    self.log_event("DISCONNECT", f"Client disconnected: {client_address}")
+                    break
+                
+                req_text = request.decode('utf-8', errors='ignore').split('\n')[0].strip()
+                self.log_event("REQUEST", f"Request: {req_text}")
 
-    # Close the connection with this specific client
-    client_socket.close()
+                http_response = (
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: text/plain\r\n"
+                    "Connection: keep-alive\r\n"
+                    "\r\n"
+                    f"Hello from Server on port {self.port}!\n"
+                )
+                client_socket.sendall(http_response.encode('utf-8'))
+        except Exception as e:
+            self.log_event("ERROR", f"Connection error: {e}")
+        finally:
+            try: client_socket.close()
+            except: pass
+            if client_socket in self.active_sockets:
+                self.active_sockets.remove(client_socket)
+
+    def stall(self):
+        self.stalled = True
+        self.log_event("STALL", "Server stalled (ignoring new connections)")
+
+    def resume(self):
+        self.stalled = False
+        self.log_event("RESUME", "Server resumed")
+
+    def stop(self):
+        self.running = False
+        self.log_event("STOP", "Triggering stop sequence...")
+        if self.server_socket:
+            try:
+                # Forcefully close active clients so threads exit quickly
+                for sock in self.active_sockets:
+                    sock.close()
+                # Break the blocking accept by connecting to itself
+                dummy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                dummy.connect((self.ip_address, self.port))
+                dummy.close()
+            except Exception as e:
+                pass
+        # Wait a moment for OS to free port
+        time.sleep(0.5)
 
 if __name__ == "__main__":
-    # 127.0.0.1 for local testing
-    # 0.0.0.0 to listen to all interfaces (ESP32)
     ip = input("IP: ")
     port = int(input("Port: "))
-    server_init(ip, port)
+    # Minimal example of running the OOP server standalone
+    srv = ManagedServer(ip, port)
+    srv.start()
+    try:
+        while True: time.sleep(1)
+    except KeyboardInterrupt:
+        srv.stop()

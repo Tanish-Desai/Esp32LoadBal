@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Load Balancer Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800 font-sans p-6">
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <header class="flex items-center justify-between">
+            <h1 class="text-3xl font-bold text-gray-900">Load Balancer Control Center</h1>
+            <div class="flex space-x-4 items-center">
+                <div class="bg-gray-200 px-3 py-1 rounded text-sm font-mono text-gray-700 shadow-inner">
+                    Your Laptop IP: <span class="font-bold text-blue-700">{{ laptop_ip }}</span>
+                </div>
+                <span id="socket-status" class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-medium">Disconnected</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Left Column: Settings -->
+            <div class="col-span-1 space-y-6">
+                <!-- Server Management -->
+                <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+                    <h2 class="text-xl font-bold mb-4">Servers</h2>
+                    
+                    <form id="form-create-server" class="flex gap-2 mb-4">
+                        <input type="number" id="srv-port" placeholder="Port (e.g. 8080)" class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm" required>
+                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700">Add Server</button>
+                    </form>
+                    
+                    <div class="space-y-3" id="server-list">
+                        <!-- Server cards injected here -->
+                    </div>
+                </div>
+
+                <!-- Client Management -->
+                <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+                    <h2 class="text-xl font-bold mb-4">Mock Clients</h2>
+                    
+                    <form id="form-create-client" class="mb-4">
+                        <div class="flex gap-2 mb-2">
+                            <input type="text" id="cli-ip" placeholder="ESP32 IP" value="192.168.1.100" class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm" required>
+                            <input type="number" id="cli-port" placeholder="Port" value="80" class="w-24 border border-gray-300 rounded px-3 py-2 text-sm" required>
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="number" step="0.1" id="cli-delay" placeholder="Delay (sec)" value="1.0" class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm" required>
+                            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700 w-full">Spawn Client</button>
+                        </div>
+                    </form>
+                    
+                    <div class="space-y-3" id="client-list">
+                        <!-- Client cards injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Visualization & Logs -->
+            <div class="col-span-1 lg:col-span-2 space-y-6">
+                <!-- Telemetry Graph -->
+                <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+                    <h2 class="text-xl font-bold mb-4">Traffic Visualization (Req/s)</h2>
+                    <div class="relative h-64 w-full">
+                        <canvas id="trafficChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Live Request Logs -->
+                <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 flex flex-col h-80">
+                    <h2 class="text-xl font-bold mb-4">Live Request Stream</h2>
+                    <div class="flex-1 bg-gray-900 text-green-400 font-mono text-sm p-4 rounded overflow-y-auto space-y-1" id="log-console">
+                        <!-- Log messages injected here -->
+                        <div>> System Ready. Waiting for traffic...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
