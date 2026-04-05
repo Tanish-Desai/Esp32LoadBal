@@ -29,8 +29,16 @@ WiFiServer publicServer(listen_port);
 // --- GLOBAL CLIENTS TO KEEP CONNECTION ALIVE ---
 // ESP32 supports max 16 sockets. 1 for listener, 2 per client (frontend+backend). (16-1)/2 = 7 max clients.
 const int MAX_CLIENTS = 7;
-WiFiClient g_clients[MAX_CLIENTS];
-WiFiClient g_backends[MAX_CLIENTS];
+
+struct ProxySession {
+    WiFiClient client;
+    WiFiClient backend;
+    int backend_idx;
+    unsigned long start_time;
+    bool active;
+};
+
+ProxySession sessions[MAX_CLIENTS];
 // -----------------------------------------------
 
 LoadBalancerStrategy* lb_strategy;
@@ -99,16 +107,21 @@ void loop() {
         bool assigned = false;
         
         for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (!g_clients[i] || !g_clients[i].connected()) {
+            if (!sessions[i].active || !sessions[i].client.connected()) {
                 Serial.printf("Assigning to Slot %d\n", i + 1);
-                g_clients[i] = newClient; // Move connection to global
+                
+                // Initialize session
+                sessions[i].client = newClient;
+                sessions[i].active = true;
+                sessions[i].start_time = millis();
                 
                 // Connect Backend
                 bool backend_connected = false;
                 for (int j = 0; j < num_backends; j++) {
                     int port_idx = lb_strategy->getNextBackend();
-                    if (g_backends[i].connect(server_ip.c_str(), backend_ports[port_idx])) {
+                    if (sessions[i].backend.connect(server_ip.c_str(), backend_ports[port_idx])) {
                         Serial.printf("Backend Connected (Port %d)\n", backend_ports[port_idx]);
+                        sessions[i].backend_idx = port_idx;
                         backend_connected = true;
                         break;
                     } else {
@@ -118,8 +131,9 @@ void loop() {
 
                 if (!backend_connected) {
                     Serial.println("All backends failed. Cannot forward traffic.");
-                    g_clients[i].print("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\nAll backends are offline.");
-                    g_clients[i].stop();
+                    sessions[i].client.print("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\nAll backends are offline.");
+                    sessions[i].client.stop();
+                    sessions[i].active = false;
                 }
                 
                 assigned = true;
@@ -136,12 +150,20 @@ void loop() {
 
     // 2. Handle Data Traffic for all slots
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (g_clients[i] && g_clients[i].connected() && g_backends[i] && g_backends[i].connected()) {
-            talk(g_clients[i], g_backends[i]);
-            talk(g_backends[i], g_clients[i]);
-        } else {
-            if (g_clients[i]) g_clients[i].stop();
-            if (g_backends[i]) g_backends[i].stop();
+        if (sessions[i].active) {
+            if (sessions[i].client && sessions[i].client.connected() && sessions[i].backend && sessions[i].backend.connected()) {
+                talk(sessions[i].client, sessions[i].backend);
+                talk(sessions[i].backend, sessions[i].client);
+            } else {
+                // Connection ended or dropped
+                unsigned long duration = millis() - sessions[i].start_time;
+                Serial.printf("Session [Slot %d] ended. Backend: Port %d. Duration: %lu ms\n", 
+                              i + 1, backend_ports[sessions[i].backend_idx], duration);
+                
+                if (sessions[i].client) sessions[i].client.stop();
+                if (sessions[i].backend) sessions[i].backend.stop();
+                sessions[i].active = false;
+            }
         }
     }
 }

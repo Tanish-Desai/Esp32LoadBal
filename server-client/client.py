@@ -38,31 +38,34 @@ class MockClient(threading.Thread):
             self.running = False
             return
 
-        counter = 0
-        while self.running:
-            try:
-                msg = f"GET /ping/{self.client_id}/{counter} HTTP/1.1\r\nHost: {self.target_ip}\r\n\r\n"
-                self.socket.sendall(msg.encode('utf-8'))
-                self.log_event("PING", f"Sent: /ping/{self.client_id}/{counter}")
-                
-                # Wait for response
-                response = self.socket.recv(1024)
-                if not response:
-                    self.log_event("DISCONNECTED", "Connection closed by server")
-                    break
-                    
+        try:
+            msg = f"GET /ping/{self.client_id}/0 HTTP/1.1\r\nHost: {self.target_ip}\r\n\r\n"
+            self.socket.sendall(msg.encode('utf-8'))
+            self.log_event("PING", f"Sent: /ping/{self.client_id}/0")
+            
+            # Wait for response (timeout is handled by socket.settimeout(2.0))
+            response = self.socket.recv(1024)
+            if not response:
+                print(f"[Client:{self.client_id}] TERMINATION REASON: Connection closed by server before ACK")
+                self.log_event("DISCONNECTED", "Connection closed by server")
+            else:
                 resp_text = response.decode('utf-8', errors='ignore').split('\n')[0].strip()
                 self.log_event("PONG", f"Received: {resp_text}")
                 
-                counter += 1
-                time.sleep(self.delay)
-            except socket.timeout:
-                self.log_event("TIMEOUT", "Socket operation timed out")
-            except Exception as e:
-                if self.running:
-                    self.log_event("ERROR", f"Communication error: {e}")
-                break
+                if "200 OK" in resp_text:
+                    print(f"[Client:{self.client_id}] TERMINATION REASON: ACK (200 OK) received")
+                else:
+                    print(f"[Client:{self.client_id}] TERMINATION REASON: Received non-200 response")
+                    
+        except socket.timeout:
+            print(f"[Client:{self.client_id}] TERMINATION REASON: Timeout reached")
+            self.log_event("TIMEOUT", "Socket operation timed out")
+        except Exception as e:
+            if self.running:
+                print(f"[Client:{self.client_id}] TERMINATION REASON: Communication error ({e})")
+                self.log_event("ERROR", f"Communication error: {e}")
 
+        self.running = False
         try:
             self.socket.close()
         except:

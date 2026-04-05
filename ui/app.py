@@ -31,7 +31,42 @@ def get_local_ip():
 
 # State
 servers = {} # port -> ManagedServer instance
-clients = {} # id -> MockClient instance
+builders = {} # id -> ClientBuilder instance
+
+class ClientBuilder(threading.Thread):
+    def __init__(self, builder_id, target_ip, target_port, delay, event_callback):
+        super().__init__()
+        self.builder_id = builder_id
+        self.target_ip = target_ip
+        self.target_port = target_port
+        self.delay = delay
+        self.event_callback = event_callback
+        self.running = False
+        self.current_client = None
+        self.daemon = True
+
+    def run(self):
+        self.running = True
+        counter = 0
+        while self.running:
+            # Create a unique short-lived client for logging
+            cid = f"{self.builder_id}-{counter}"
+            self.current_client = MockClient(self.target_ip, self.target_port, cid, self.delay, self.event_callback)
+            self.current_client.start()
+            
+            # Wait for this request to finish (which terminates the client)
+            self.current_client.join()
+            
+            counter += 1
+            if not self.running:
+                break
+                
+            time.sleep(self.delay)
+
+    def stop(self):
+        self.running = False
+        if self.current_client:
+            self.current_client.stop()
 
 # WebSockets Callbacks
 def server_event_callback(data):
@@ -120,37 +155,41 @@ def delete_server(port):
 @app.route('/api/clients', methods=['GET'])
 def get_clients():
     out = []
-    for cid, client in clients.items():
+    for cid, builder in builders.items():
         out.append({
             'id': cid,
-            'target_ip': client.target_ip,
-            'target_port': client.target_port,
-            'running': client.running,
-            'delay': client.delay
+            'target_ip': builder.target_ip,
+            'target_port': builder.target_port,
+            'running': builder.running,
+            'delay': builder.delay,
+            'current_client_id': builder.current_client.client_id if builder.current_client else None
         })
     return jsonify(out)
 
 @app.route('/api/clients/create', methods=['POST'])
 def create_client():
+    if len(builders) >= 7:
+        return jsonify({'error': 'Maximum of 7 client builders reached (ESP32 limit)'}), 400
+
     data = request.json
     target_ip = data.get('target_ip', '127.0.0.1')
     target_port = int(data.get('target_port', 80))
     delay = float(data.get('delay', 1.0))
     
     cid = str(uuid.uuid4())[:8]
-    client = MockClient(target_ip, target_port, cid, delay=delay, event_callback=client_event_callback)
-    clients[cid] = client
+    builder = ClientBuilder(cid, target_ip, target_port, delay, client_event_callback)
+    builders[cid] = builder
     
-    # Auto-start client
-    client.start()
+    # Auto-start builder
+    builder.start()
     return jsonify({'status': 'success', 'id': cid})
 
 @app.route('/api/clients/<client_id>/stop', methods=['POST'])
 def stop_client(client_id):
-    if client_id not in clients:
+    if client_id not in builders:
         return jsonify({'error': 'Client not found'}), 404
-    clients[client_id].stop()
-    del clients[client_id]
+    builders[client_id].stop()
+    del builders[client_id]
     return jsonify({'status': 'stopped'})
 
 

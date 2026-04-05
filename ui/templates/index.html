@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,56 +17,82 @@
     <!-- Socket.IO -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 transition-colors duration-200 min-h-screen text-gray-800 dark:text-gray-100 font-sans p-6">
+
+<body
+    class="bg-gray-100 dark:bg-gray-900 transition-colors duration-200 min-h-screen text-gray-800 dark:text-gray-100 font-sans p-6">
     <div class="max-w-7xl mx-auto space-y-6">
-        
+
         <header class="flex items-center justify-between">
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Load Balancer Control Center</h1>
             <div class="flex space-x-4 items-center">
                 <button id="theme-toggle" class="p-2 bg-gray-200 dark:bg-gray-700 rounded-full focus:outline-none">
-                    <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5 text-gray-800 dark:text-gray-200" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
-                    <svg id="theme-toggle-light-icon" class="hidden w-5 h-5 text-gray-800 dark:text-gray-200" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+                    <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5 text-gray-800 dark:text-gray-200"
+                        fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+                    </svg>
+                    <svg id="theme-toggle-light-icon" class="hidden w-5 h-5 text-gray-800 dark:text-gray-200"
+                        fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"
+                            fill-rule="evenodd" clip-rule="evenodd"></path>
+                    </svg>
                 </button>
-                <div class="bg-gray-200 dark:bg-gray-800 px-3 py-1 rounded text-sm font-mono text-gray-700 dark:text-gray-300 shadow-inner">
+                <div
+                    class="bg-gray-200 dark:bg-gray-800 px-3 py-1 rounded text-sm font-mono text-gray-700 dark:text-gray-300 shadow-inner">
                     Your Laptop IP: <span class="font-bold text-blue-700 dark:text-blue-400">{{ laptop_ip }}</span>
                 </div>
-                <span id="socket-status" class="px-3 py-1 bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full text-sm font-medium">Disconnected</span>
+                <span id="socket-status"
+                    class="px-3 py-1 bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full text-sm font-medium">Disconnected</span>
             </div>
         </header>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
+
             <!-- Left Column: Settings -->
             <div class="col-span-1 space-y-6">
                 <!-- Server Management -->
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                <div
+                    class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
                     <h2 class="text-xl font-bold mb-4 dark:text-white">Servers</h2>
-                    
+
                     <form id="form-create-server" class="flex gap-2 mb-4">
-                        <input type="number" id="srv-port" placeholder="Port (e.g. 8080)" class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm" required>
-                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700">Add Server</button>
+                        <input type="number" id="srv-port" placeholder="Port (e.g. 8080)"
+                            class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm"
+                            required>
+                        <button type="submit"
+                            class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700">Add
+                            Server</button>
                     </form>
-                    
+
                     <div class="space-y-3" id="server-list">
                         <!-- Server cards injected here -->
                     </div>
                 </div>
 
                 <!-- Client Management -->
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                <div
+                    class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
                     <h2 class="text-xl font-bold mb-4 dark:text-white">Mock Clients</h2>
-                    
+
                     <form id="form-create-client" class="mb-4">
                         <div class="flex gap-2 mb-2">
-                            <input type="text" id="cli-ip" placeholder="ESP32 IP" value="192.168.1.100" class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm" required>
-                            <input type="number" id="cli-port" placeholder="Port" value="80" class="w-24 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm" required>
+                            <input type="text" id="cli-ip" placeholder="ESP32 IP" value="192.168.1.100"
+                                class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm"
+                                required>
+                            <input type="number" id="cli-port" placeholder="Port" value="80"
+                                class="w-24 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm"
+                                required>
                         </div>
                         <div class="flex gap-2">
-                            <input type="number" step="0.1" id="cli-delay" placeholder="Delay (sec)" value="1.0" class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm" required>
-                            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700 w-full">Spawn Client</button>
+                            <input type="number" step="0.1" id="cli-delay" placeholder="Delay (sec)" value="1.0"
+                                class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm"
+                                required>
+                            <button type="submit"
+                                class="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700 w-full">Spawn
+                                Client</button>
                         </div>
                     </form>
-                    
+
                     <div class="space-y-3" id="client-list">
                         <!-- Client cards injected here -->
                     </div>
@@ -75,17 +102,46 @@
             <!-- Right Column: Visualization & Logs -->
             <div class="col-span-1 lg:col-span-2 space-y-6">
                 <!-- Telemetry Graph -->
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-                    <h2 class="text-xl font-bold mb-4 dark:text-white">Traffic Visualization (Req/s)</h2>
-                    <div class="relative h-64 w-full">
+                <div
+                    class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold dark:text-white">Traffic Visualization</h2>
+                        <div class="flex items-center space-x-2">
+                            <label for="chart-refresh" class="text-sm dark:text-gray-300">Refresh (ms):</label>
+                            <input type="number" id="chart-refresh" value="250"
+                                class="w-24 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-2 py-1 text-sm">
+                        </div>
+                    </div>
+
+                    <h3 class="text-md font-semibold mb-2 text-gray-700 dark:text-gray-300">Total Period Requests</h3>
+                    <div class="relative h-48 w-full mb-6">
+                        <canvas id="totalPeriodChart"></canvas>
+                    </div>
+
+                    <h3 class="text-md font-semibold mb-2 text-gray-700 dark:text-gray-300">Server Requests in Period
+                    </h3>
+                    <div class="relative h-48 w-full mb-4">
                         <canvas id="trafficChart"></canvas>
+                    </div>
+
+                    <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded mb-4 text-center">
+                        <div class="font-semibold text-gray-500 dark:text-gray-400">Total Requests Received (All Time)
+                        </div>
+                        <div id="stat-total-reqs" class="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-1">0
+                        </div>
+                    </div>
+
+                    <div id="live-stats" class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm dark:text-gray-300">
+                        <!-- Server specific period requests will be injected here -->
                     </div>
                 </div>
 
                 <!-- Live Request Logs -->
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-80">
+                <div
+                    class="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-80">
                     <h2 class="text-xl font-bold mb-4 dark:text-white">Live Request Stream</h2>
-                    <div class="flex-1 bg-gray-900 text-green-400 font-mono text-sm p-4 rounded overflow-y-auto space-y-1" id="log-console">
+                    <div class="flex-1 bg-gray-900 text-green-400 font-mono text-sm p-4 rounded overflow-y-auto space-y-1"
+                        id="log-console">
                         <!-- Log messages injected here -->
                         <div>> System Ready. Waiting for traffic...</div>
                     </div>
@@ -96,4 +152,5 @@
 
     <script src="/static/app.js"></script>
 </body>
+
 </html>

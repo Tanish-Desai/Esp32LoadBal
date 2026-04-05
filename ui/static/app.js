@@ -12,7 +12,7 @@ const chartCfg = {
     type: 'line',
     data: {
         labels: [],
-        datasets: [] // Each server gets a dataset {label: "Port 8080", data: []}
+        datasets: []
     },
     options: {
         responsive: true,
@@ -20,18 +20,53 @@ const chartCfg = {
         scales: {
             x: {
                 title: { display: true, text: 'Time' },
-                ticks: { display: false } // hide raw timestamps for clean look
+                ticks: { display: false }
             },
             y: {
-                title: { display: true, text: 'Requests / Sec' },
+                title: { display: true, text: 'Requests in Period' },
                 min: 0,
-                suggestedMax: 10
+                suggestedMax: 10,
             }
         },
-        animation: { duration: 0 } // Fast updates
+        animation: { duration: 0 }
     }
 };
 const trafficChart = new Chart(ctx, chartCfg);
+
+const ctxTotal = document.getElementById('totalPeriodChart').getContext('2d');
+const totalChartCfg = {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: 'Total Period Requests (All)',
+                data: [],
+                borderColor: '#6366F1',
+                tension: 0.2,
+                fill: true,
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            x: {
+                title: { display: true, text: 'Time' },
+                ticks: { display: false }
+            },
+            y: {
+                title: { display: true, text: 'Requests in Period' },
+                min: 0,
+                suggestedMax: 10,
+            }
+        },
+        animation: { duration: 0 }
+    }
+};
+const totalPeriodChart = new Chart(ctxTotal, totalChartCfg);
 
 // Socket IO Events
 socket.on('connect', () => {
@@ -49,40 +84,104 @@ socket.on('disconnect', () => {
 
 // Traffic Tracking
 const currentRequestCounts = {}; // { port: count }
-const UPDATE_INTERVAL_MS = 250; 
-setInterval(() => {
-    // Tick the chart every 250ms
-    const now = new Date().toLocaleTimeString();
-    trafficChart.data.labels.push(now);
+const lastNonZeroCounts = {}; // { port: count }
+let totalRequestsReceived = 0;
+let UPDATE_INTERVAL_MS = parseInt(document.getElementById('chart-refresh')?.value) || 250;
+let chartInterval;
 
-    servers.forEach(srv => {
-        let dataset = trafficChart.data.datasets.find(d => d.label === `Server ${srv.port}`);
-        if (!dataset) {
-            dataset = {
-                label: `Server ${srv.port}`,
-                data: [],
-                borderColor: `hsl(${Math.random() * 360}, 70%, 50%)`,
-                tension: 0.2, // Smooth lines
-                fill: true,
-                backgroundColor: 'rgba(0,0,0,0.05)'
-            };
-            trafficChart.data.datasets.push(dataset);
+function startChartInterval() {
+    if (chartInterval) clearInterval(chartInterval);
+    chartInterval = setInterval(() => {
+        // Tick the chart every UPDATE_INTERVAL_MS
+        const now = new Date().toLocaleTimeString();
+        trafficChart.data.labels.push(now);
+        totalPeriodChart.data.labels.push(now);
+
+        let periodTotal = 0;
+        servers.forEach(srv => {
+            let dataset = trafficChart.data.datasets.find(d => d.label === `Server ${srv.port}`);
+            if (!dataset) {
+                dataset = {
+                    label: `Server ${srv.port}`,
+                    data: [],
+                    borderColor: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                    tension: 0.2, // Smooth lines
+                    fill: false
+                };
+                trafficChart.data.datasets.push(dataset);
+            }
+            const count = currentRequestCounts[srv.port] || 0;
+            periodTotal += count;
+            
+            if (count > 0) {
+                lastNonZeroCounts[srv.port] = count;
+            }
+
+            // Push the requests received in this period
+            dataset.data.push(count);
+
+            // Reset counter
+            currentRequestCounts[srv.port] = 0;
+        });
+
+        // Update fixed datasets
+        const periodTotalDataset = totalPeriodChart.data.datasets.find(d => d.label === 'Total Period Requests (All)');
+        if (periodTotalDataset) periodTotalDataset.data.push(periodTotal);
+
+        // Keep last 60 ticks
+        if (trafficChart.data.labels.length > 60) {
+            trafficChart.data.labels.shift();
+            trafficChart.data.datasets.forEach(d => d.data.shift());
+            
+            totalPeriodChart.data.labels.shift();
+            totalPeriodChart.data.datasets.forEach(d => d.data.shift());
         }
-        // Multiply by (1000 / UPDATE_INTERVAL_MS) to approximate Requests / Sec
-        const factor = 1000 / UPDATE_INTERVAL_MS;
-        dataset.data.push((currentRequestCounts[srv.port] || 0) * factor);
-        // Reset counter
-        currentRequestCounts[srv.port] = 0;
-    });
+        
+        trafficChart.update();
+        totalPeriodChart.update();
+        
+        // Update live stats HTML
+        const statTotalParams = document.getElementById('stat-total-reqs');
+        if (statTotalParams) {
+            statTotalParams.innerText = totalRequestsReceived;
+        }
 
-    // Keep last 60 ticks
-    if (trafficChart.data.labels.length > 60) {
-        trafficChart.data.labels.shift();
-        trafficChart.data.datasets.forEach(d => d.data.shift());
+        // Render server-specific period stats
+        const liveStatsContainer = document.getElementById('live-stats');
+        if (liveStatsContainer) {
+            liveStatsContainer.innerHTML = '';
+            servers.sort((a,b) => a.port - b.port).forEach(srv => {
+                const dataset = trafficChart.data.datasets.find(d => d.label === `Server ${srv.port}`);
+                const currentVal = dataset ? dataset.data[dataset.data.length - 1] : 0;
+                const lastNonZero = lastNonZeroCounts[srv.port] || 0;
+                
+                const div = document.createElement('div');
+                div.className = 'p-3 bg-gray-50 dark:bg-gray-700 rounded text-center border border-gray-200 dark:border-gray-600';
+                div.innerHTML = `
+                    <div class="font-semibold text-gray-500 dark:text-gray-400">Server ${srv.port}</div>
+                    <div class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">${currentVal}</div>
+                    <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">Last >0: <span class="font-bold">${lastNonZero}</span></div>
+                `;
+                liveStatsContainer.appendChild(div);
+            });
+        }
+        
+    }, UPDATE_INTERVAL_MS);
+}
+startChartInterval();
+
+window.addEventListener('DOMContentLoaded', () => {
+    const refreshInput = document.getElementById('chart-refresh');
+    if (refreshInput) {
+        refreshInput.addEventListener('change', (e) => {
+            const val = parseInt(e.target.value);
+            if (val && val >= 100) {
+                UPDATE_INTERVAL_MS = val;
+                startChartInterval();
+            }
+        });
     }
-    
-    trafficChart.update();
-}, UPDATE_INTERVAL_MS);
+});
 
 
 // Server Events
@@ -92,6 +191,9 @@ socket.on('server_event', (data) => {
     
     if (data.action === 'REQUEST') {
         currentRequestCounts[data.server_port] = (currentRequestCounts[data.server_port] || 0) + 1;
+        totalRequestsReceived++;
+        const el = document.getElementById('stat-total-reqs');
+        if (el) el.innerText = totalRequestsReceived;
     }
     
     if (['START', 'STOP', 'STALL', 'RESUME'].includes(data.action)) {
@@ -189,6 +291,7 @@ function renderClients() {
             <div>
                 <strong class="dark:text-white">${c.id}</strong> <span class="text-xs text-gray-500 dark:text-gray-400">Delay: ${c.delay}s</span>
                 <div class="mt-1 text-gray-600 dark:text-gray-400 font-mono text-xs">Target: ${c.target_ip}:${c.target_port}</div>
+                <div class="text-xs text-blue-500 font-mono mt-1">Live ID: ${c.current_client_id || 'N/A'}</div>
             </div>
             <div>
                  <button onclick="cmdClient('${c.id}', 'stop')" class="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200 px-2 py-1 hover:bg-red-200 dark:hover:bg-red-800 rounded">Terminate</button>
@@ -278,6 +381,9 @@ if(themeToggleBtn) {
         updateThemeIcons();
     });
 }
+
+// Start periodic sync roughly every 1.5s to catch new client IDs smoothly
+setInterval(refreshState, 1500);
 
 // Initial fetch
 refreshState();
