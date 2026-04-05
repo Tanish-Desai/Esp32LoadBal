@@ -101,10 +101,18 @@ function startChartInterval() {
         servers.forEach(srv => {
             let dataset = trafficChart.data.datasets.find(d => d.label === `Server ${srv.port}`);
             if (!dataset) {
+                const CHART_COLORS = [
+                    '#e6194B', // Red
+                    '#3cb44b', // Green
+                    '#4363d8', // Blue
+                    '#f58231', // Orange
+                    '#911eb4'  // Purple
+                ];
+                const colorIndex = trafficChart.data.datasets.length % CHART_COLORS.length;
                 dataset = {
                     label: `Server ${srv.port}`,
                     data: [],
-                    borderColor: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                    borderColor: CHART_COLORS[colorIndex],
                     tension: 0.2, // Smooth lines
                     fill: false
                 };
