@@ -10,6 +10,8 @@ private:
     float alpha;   // Learning rate
     float gamma;   // Discount factor
     float epsilon; // Exploration rate (0.0 to 1.0)
+    float epsilon_decay; // Rate at which exploration decays
+    float min_epsilon;   // Minimum exploration rate
 
     // The Q-Table: Rows = States (active connections), Cols = Actions (backends)
     // We dynamically allocate this based on config, but it's very small.

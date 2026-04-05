@@ -6,9 +6,11 @@ QLearning::QLearning(int backends, int max_concurrent_clients) {
     num_backends = backends;
     max_states = max_concurrent_clients + 1; // +1 to include '0' connections state
     
-    alpha = 0.1f;    // Learn gradually
-    gamma = 0.5f;    // Moderate focus on future states
-    epsilon = 0.2f;  // Explore random servers 20% of the time
+    alpha = 0.3f;          // Learn gradually
+    gamma = 0.5f;          // Moderate focus on future states
+    epsilon = 1.0f;        // Start by exploring 100% of the time (decay it later)
+    epsilon_decay = 0.95f; // Reduce exploration by 5% after every feedback cycle
+    min_epsilon = 0.05f;   // Never stop fully exploring (minimum 5%)
 
     // Initialize Q-Table with 0.0
     q_table = new float*[max_states];
@@ -74,6 +76,14 @@ void QLearning::provideFeedback(int backend_idx, int current_state, int next_sta
     float new_q = old_q + alpha * (reward + gamma * max_future_q - old_q);
     
     q_table[current_state][backend_idx] = new_q;
+
+    // Apply Epsilon Decay
+    if (epsilon > min_epsilon) {
+        epsilon *= epsilon_decay;
+    }
+    if (epsilon < min_epsilon) {
+        epsilon = min_epsilon;
+    }
 }
 
 void QLearning::printQTable() {
