@@ -3,12 +3,13 @@ import threading
 import time
 
 class MockClient(threading.Thread):
-    def __init__(self, target_ip, target_port, client_id, delay=1.0, event_callback=None):
+    def __init__(self, target_ip, target_port, client_id, delay=1.0, timeout=2.0, event_callback=None):
         super().__init__()
         self.target_ip = target_ip
         self.target_port = target_port
         self.client_id = client_id
         self.delay = delay
+        self.timeout = timeout
         self.running = False
         self.socket = None
         self.event_callback = event_callback
@@ -27,7 +28,7 @@ class MockClient(threading.Thread):
     def run(self):
         self.running = True
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.settimeout(2.0)
+        self.socket.settimeout(self.timeout)
         
         try:
             self.log_event("CONNECTING", f"Connecting to {self.target_ip}:{self.target_port}")

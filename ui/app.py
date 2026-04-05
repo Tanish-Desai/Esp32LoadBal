@@ -34,12 +34,13 @@ servers = {} # port -> ManagedServer instance
 builders = {} # id -> ClientBuilder instance
 
 class ClientBuilder(threading.Thread):
-    def __init__(self, builder_id, target_ip, target_port, delay, event_callback):
+    def __init__(self, builder_id, target_ip, target_port, delay, timeout, event_callback):
         super().__init__()
         self.builder_id = builder_id
         self.target_ip = target_ip
         self.target_port = target_port
         self.delay = delay
+        self.timeout = timeout
         self.event_callback = event_callback
         self.running = False
         self.current_client = None
@@ -51,7 +52,7 @@ class ClientBuilder(threading.Thread):
         while self.running:
             # Create a unique short-lived client for logging
             cid = f"{self.builder_id}-{counter}"
-            self.current_client = MockClient(self.target_ip, self.target_port, cid, self.delay, self.event_callback)
+            self.current_client = MockClient(self.target_ip, self.target_port, cid, self.delay, self.timeout, self.event_callback)
             self.current_client.start()
             
             # Wait for this request to finish (which terminates the client)
@@ -93,7 +94,8 @@ def get_servers():
             'ip': srv.ip_address,
             'running': srv.running,
             'stalled': srv.stalled,
-            'max_clients': srv.max_clients
+            'max_clients': srv.max_clients,
+            'latency': srv.latency
         })
     return jsonify(out)
 
@@ -102,11 +104,12 @@ def create_server():
     data = request.json
     port = int(data.get('port'))
     ip = data.get('ip', '0.0.0.0')
+    latency = float(data.get('latency', 0.0))
     
     if port in servers:
         return jsonify({'error': f'Server on port {port} already exists'}), 400
         
-    srv = ManagedServer(ip, port, event_callback=server_event_callback)
+    srv = ManagedServer(ip, port, event_callback=server_event_callback, latency=latency)
     servers[port] = srv
     return jsonify({'status': 'success', 'port': port})
 
@@ -162,6 +165,7 @@ def get_clients():
             'target_port': builder.target_port,
             'running': builder.running,
             'delay': builder.delay,
+            'timeout': builder.timeout,
             'current_client_id': builder.current_client.client_id if builder.current_client else None
         })
     return jsonify(out)
@@ -175,9 +179,10 @@ def create_client():
     target_ip = data.get('target_ip', '127.0.0.1')
     target_port = int(data.get('target_port', 80))
     delay = float(data.get('delay', 1.0))
+    timeout = float(data.get('timeout', 2.0))
     
     cid = str(uuid.uuid4())[:8]
-    builder = ClientBuilder(cid, target_ip, target_port, delay, client_event_callback)
+    builder = ClientBuilder(cid, target_ip, target_port, delay, timeout, client_event_callback)
     builders[cid] = builder
     
     # Auto-start builder

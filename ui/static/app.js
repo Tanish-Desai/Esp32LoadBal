@@ -263,7 +263,7 @@ function renderServers() {
 
         d.innerHTML = `
             <div>
-                <strong class="dark:text-white">Port ${s.port}</strong> <span class="text-gray-500 dark:text-gray-400 text-xs">(${s.ip})</span>
+                <strong class="dark:text-white">Port ${s.port}</strong> <span class="text-gray-500 dark:text-gray-400 text-xs">(${s.ip}, Lag: ${s.latency}%)</span>
                 <div class="mt-1">${statusTag}</div>
             </div>
             <div class="flex gap-1 flex-col">
@@ -289,7 +289,7 @@ function renderClients() {
         d.className = 'border border-gray-200 dark:border-gray-700 rounded p-3 flex justify-between items-center text-sm bg-white dark:bg-gray-800';
         d.innerHTML = `
             <div>
-                <strong class="dark:text-white">${c.id}</strong> <span class="text-xs text-gray-500 dark:text-gray-400">Delay: ${c.delay}s</span>
+                <strong class="dark:text-white">${c.id}</strong> <span class="text-xs text-gray-500 dark:text-gray-400">Delay: ${c.delay}s, Timeout: ${c.timeout}s</span>
                 <div class="mt-1 text-gray-600 dark:text-gray-400 font-mono text-xs">Target: ${c.target_ip}:${c.target_port}</div>
                 <div class="text-xs text-blue-500 font-mono mt-1">Live ID: ${c.current_client_id || 'N/A'}</div>
             </div>
@@ -316,9 +316,10 @@ window.cmdClient = async (id, action, method='POST') => {
 document.getElementById('form-create-server').addEventListener('submit', async (e) => {
     e.preventDefault();
     const port = document.getElementById('srv-port').value;
+    const latency = document.getElementById('srv-latency').value;
     await fetchApi('/api/servers/create', {
         method: 'POST',
-        body: JSON.stringify({ port })
+        body: JSON.stringify({ port, latency })
     });
     document.getElementById('srv-port').value = '';
     refreshState();
@@ -329,10 +330,11 @@ document.getElementById('form-create-client').addEventListener('submit', async (
     const target_ip = document.getElementById('cli-ip').value;
     const target_port = document.getElementById('cli-port').value;
     const delay = document.getElementById('cli-delay').value;
+    const timeout = document.getElementById('cli-timeout').value;
     
     await fetchApi('/api/clients/create', {
         method: 'POST',
-        body: JSON.stringify({ target_ip, target_port, delay })
+        body: JSON.stringify({ target_ip, target_port, delay, timeout })
     });
     refreshState();
 });

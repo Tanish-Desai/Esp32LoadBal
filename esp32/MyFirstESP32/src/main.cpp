@@ -95,7 +95,15 @@ void setup() {
     num_backends = get_num_backends();
     Serial.printf("Configured for %d backends.\n", num_backends);
 
-    lb_strategy = new RoundRobin(num_backends);
+    lb_strategy = new QLearning(num_backends, MAX_CLIENTS);
+}
+
+int get_active_clients() {
+    int active = 0;
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (sessions[i].active) active++;
+    }
+    return active;
 }
 
 void loop() {
@@ -117,8 +125,9 @@ void loop() {
                 
                 // Connect Backend
                 bool backend_connected = false;
+                int current_state = get_active_clients() - 1; // Since we just set this session active, subtract 1 for the state *before* assigning
                 for (int j = 0; j < num_backends; j++) {
-                    int port_idx = lb_strategy->getNextBackend();
+                    int port_idx = lb_strategy->getNextBackend(current_state);
                     if (sessions[i].backend.connect(server_ip.c_str(), backend_ports[port_idx])) {
                         Serial.printf("Backend Connected (Port %d)\n", backend_ports[port_idx]);
                         sessions[i].backend_idx = port_idx;
@@ -157,8 +166,22 @@ void loop() {
             } else {
                 // Connection ended or dropped
                 unsigned long duration = millis() - sessions[i].start_time;
-                Serial.printf("Session [Slot %d] ended. Backend: Port %d. Duration: %lu ms\n", 
-                              i + 1, backend_ports[sessions[i].backend_idx], duration);
+                float reward;
+                
+                // If duration is extremely high (e.g. >= 2000, which usually means client timeout)
+                if (duration >= 2000) {
+                    reward = -50.0;
+                } else {
+                    reward = 1000.0 / (duration + 1.0);
+                }
+                
+                int current_state = get_active_clients();
+                int next_state = current_state - 1;
+
+                lb_strategy->provideFeedback(sessions[i].backend_idx, current_state, next_state, reward);
+
+                Serial.printf("Session [Slot %d] ended. Backend: Port %d. Duration: %lu ms. Reward: %.2f\n", 
+                              i + 1, backend_ports[sessions[i].backend_idx], duration, reward);
                 
                 if (sessions[i].client) sessions[i].client.stop();
                 if (sessions[i].backend) sessions[i].backend.stop();

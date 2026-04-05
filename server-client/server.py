@@ -3,13 +3,15 @@ import threading
 import time
 
 class ManagedServer(threading.Thread):
-    def __init__(self, ip_address, port, event_callback=None):
+    def __init__(self, ip_address, port, event_callback=None, latency=0.0):
         super().__init__()
         self.ip_address = ip_address
         self.port = port
         self.server_socket = None
         self.running = False
         self.stalled = False
+        self.latency = latency
+        self.max_timeout = 2.0 # 2.0 corresponds to default client timeout
         self.client_threads = []
         self.active_sockets = []
         self.max_clients = 5
@@ -88,6 +90,10 @@ class ManagedServer(threading.Thread):
                 
                 req_text = request.decode('utf-8', errors='ignore').split('\n')[0].strip()
                 self.log_event("REQUEST", f"Request: {req_text}")
+
+                # Simulate artificial latency based on percentage
+                if self.latency > 0:
+                    time.sleep((float(self.latency) / 100.0) * self.max_timeout)
 
                 http_response = (
                     "HTTP/1.1 200 OK\r\n"
