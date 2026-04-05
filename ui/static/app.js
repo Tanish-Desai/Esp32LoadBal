@@ -49,8 +49,9 @@ socket.on('disconnect', () => {
 
 // Traffic Tracking
 const currentRequestCounts = {}; // { port: count }
+const UPDATE_INTERVAL_MS = 250; 
 setInterval(() => {
-    // Tick the chart every 1 second
+    // Tick the chart every 250ms
     const now = new Date().toLocaleTimeString();
     trafficChart.data.labels.push(now);
 
@@ -67,19 +68,21 @@ setInterval(() => {
             };
             trafficChart.data.datasets.push(dataset);
         }
-        dataset.data.push(currentRequestCounts[srv.port] || 0);
+        // Multiply by (1000 / UPDATE_INTERVAL_MS) to approximate Requests / Sec
+        const factor = 1000 / UPDATE_INTERVAL_MS;
+        dataset.data.push((currentRequestCounts[srv.port] || 0) * factor);
         // Reset counter
         currentRequestCounts[srv.port] = 0;
     });
 
-    // Keep last 60 seconds
+    // Keep last 60 ticks
     if (trafficChart.data.labels.length > 60) {
         trafficChart.data.labels.shift();
         trafficChart.data.datasets.forEach(d => d.data.shift());
     }
     
     trafficChart.update();
-}, 1000);
+}, UPDATE_INTERVAL_MS);
 
 
 // Server Events
@@ -150,25 +153,25 @@ function renderServers() {
     // Sort logic
     servers.sort((a,b) => a.port - b.port).forEach(s => {
         const d = document.createElement('div');
-        d.className = 'border border-gray-200 rounded p-3 flex justify-between items-center text-sm';
+        d.className = 'border border-gray-200 dark:border-gray-700 rounded p-3 flex justify-between items-center text-sm bg-white dark:bg-gray-800';
         
         let statusTag = s.running 
-            ? (s.stalled ? '<span class="text-orange-600 font-bold">Stalled</span>' : '<span class="text-green-600 font-bold">Running</span>') 
-            : '<span class="text-gray-500 font-bold">Stopped</span>';
+            ? (s.stalled ? '<span class="text-orange-600 dark:text-orange-500 font-bold">Stalled</span>' : '<span class="text-green-600 dark:text-green-500 font-bold">Running</span>') 
+            : '<span class="text-gray-500 dark:text-gray-400 font-bold">Stopped</span>';
 
         d.innerHTML = `
             <div>
-                <strong>Port ${s.port}</strong> <span class="text-gray-500 text-xs">(${s.ip})</span>
+                <strong class="dark:text-white">Port ${s.port}</strong> <span class="text-gray-500 dark:text-gray-400 text-xs">(${s.ip})</span>
                 <div class="mt-1">${statusTag}</div>
             </div>
             <div class="flex gap-1 flex-col">
                 <div class="flex gap-1 justify-end">
-                    ${!s.running ? `<button onclick="cmdServer(${s.port}, 'start')" class="bg-green-100 text-green-700 px-2 py-1 hover:bg-green-200 rounded">Start</button>` : ''}
-                    ${s.running && !s.stalled ? `<button onclick="cmdServer(${s.port}, 'stall')" class="bg-orange-100 text-orange-700 px-2 py-1 hover:bg-orange-200 rounded">Stall</button>` : ''}
-                    ${s.running && s.stalled ? `<button onclick="cmdServer(${s.port}, 'resume')" class="bg-blue-100 text-blue-700 px-2 py-1 hover:bg-blue-200 rounded">Resume</button>` : ''}
-                    ${s.running ? `<button onclick="cmdServer(${s.port}, 'stop')" class="bg-red-100 text-red-700 px-2 py-1 hover:bg-red-200 rounded">Stop</button>` : ''}
+                    ${!s.running ? `<button onclick="cmdServer(${s.port}, 'start')" class="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200 px-2 py-1 hover:bg-green-200 dark:hover:bg-green-800 rounded">Start</button>` : ''}
+                    ${s.running && !s.stalled ? `<button onclick="cmdServer(${s.port}, 'stall')" class="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200 px-2 py-1 hover:bg-orange-200 dark:hover:bg-orange-800 rounded">Stall</button>` : ''}
+                    ${s.running && s.stalled ? `<button onclick="cmdServer(${s.port}, 'resume')" class="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 px-2 py-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded">Resume</button>` : ''}
+                    ${s.running ? `<button onclick="cmdServer(${s.port}, 'stop')" class="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200 px-2 py-1 hover:bg-red-200 dark:hover:bg-red-800 rounded">Stop</button>` : ''}
                 </div>
-                <button onclick="cmdServer(${s.port}, 'delete', 'DELETE')" class="text-xs text-red-500 hover:underlinetext-right">Remove</button>
+                <button onclick="cmdServer(${s.port}, 'delete', 'DELETE')" class="text-xs text-red-500 hover:underline text-right">Remove</button>
             </div>
         `;
         container.appendChild(d);
@@ -181,14 +184,14 @@ function renderClients() {
     
     clients.forEach(c => {
         const d = document.createElement('div');
-        d.className = 'border border-gray-200 rounded p-3 flex justify-between items-center text-sm';
+        d.className = 'border border-gray-200 dark:border-gray-700 rounded p-3 flex justify-between items-center text-sm bg-white dark:bg-gray-800';
         d.innerHTML = `
             <div>
-                <strong>${c.id}</strong> <span class="text-xs text-gray-500">Delay: ${c.delay}s</span>
-                <div class="mt-1 text-gray-600 font-mono text-xs">Target: ${c.target_ip}:${c.target_port}</div>
+                <strong class="dark:text-white">${c.id}</strong> <span class="text-xs text-gray-500 dark:text-gray-400">Delay: ${c.delay}s</span>
+                <div class="mt-1 text-gray-600 dark:text-gray-400 font-mono text-xs">Target: ${c.target_ip}:${c.target_port}</div>
             </div>
             <div>
-                 <button onclick="cmdClient('${c.id}', 'stop')" class="bg-red-100 text-red-700 px-2 py-1 hover:bg-red-200 rounded">Terminate</button>
+                 <button onclick="cmdClient('${c.id}', 'stop')" class="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200 px-2 py-1 hover:bg-red-200 dark:hover:bg-red-800 rounded">Terminate</button>
             </div>
         `;
         container.appendChild(d);
@@ -230,6 +233,51 @@ document.getElementById('form-create-client').addEventListener('submit', async (
     });
     refreshState();
 });
+
+// Dark mode toggle logic
+const themeToggleBtn = document.getElementById('theme-toggle');
+const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
+const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+
+function updateThemeIcons() {
+    if (document.documentElement.classList.contains('dark')) {
+        themeToggleLightIcon.classList.remove('hidden');
+        themeToggleDarkIcon.classList.add('hidden');
+    } else {
+        themeToggleLightIcon.classList.add('hidden');
+        themeToggleDarkIcon.classList.remove('hidden');
+    }
+}
+
+// Initial theme setup
+if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+} else {
+    document.documentElement.classList.remove('dark');
+}
+if(themeToggleBtn) {
+    updateThemeIcons();
+    themeToggleBtn.addEventListener('click', function() {
+        if (localStorage.getItem('color-theme')) {
+            if (localStorage.getItem('color-theme') === 'light') {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('color-theme', 'dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('color-theme', 'light');
+            }
+        } else {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('color-theme', 'light');
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('color-theme', 'dark');
+            }
+        }
+        updateThemeIcons();
+    });
+}
 
 // Initial fetch
 refreshState();

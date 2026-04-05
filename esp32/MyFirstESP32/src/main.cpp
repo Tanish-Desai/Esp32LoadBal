@@ -22,7 +22,8 @@ String set_server_ip();
 WiFiServer publicServer(listen_port);
 
 // --- GLOBAL CLIENTS TO KEEP CONNECTION ALIVE ---
-const int MAX_CLIENTS = 10;
+// ESP32 supports max 16 sockets. 1 for listener, 2 per client (frontend+backend). (16-1)/2 = 7 max clients.
+const int MAX_CLIENTS = 7;
 WiFiClient g_clients[MAX_CLIENTS];
 WiFiClient g_backends[MAX_CLIENTS];
 // -----------------------------------------------
@@ -65,6 +66,17 @@ void setup() {
 
     publicServer.begin();
     
+    Serial.println("\nCurrent saved Laptop IP: " + server_ip);
+    Serial.println("Enter new Laptop IP (or just press enter to keep current):");
+    String new_ip = set_server_ip();
+    if(new_ip.length() > 0) {
+        server_ip = new_ip;
+        preferences.putString("server_ip", server_ip);
+        Serial.println("Saved new server IP: " + server_ip);
+    } else {
+        Serial.println("Continuing with server IP: " + server_ip);
+    }
+    
     num_backends = get_num_backends();
     Serial.printf("Configured for %d backends.\n", num_backends);
 }
@@ -98,13 +110,8 @@ void loop() {
                 }
 
                 if (!backend_connected) {
-                    Serial.println("All backends failed. Please enter correct Laptop IP:");
-                    String new_ip = set_server_ip();
-                    if(new_ip.length() > 0) {
-                        server_ip = new_ip;
-                        preferences.putString("server_ip", server_ip);
-                        Serial.println("Saved new server IP: " + server_ip);
-                    }
+                    Serial.println("All backends failed. Cannot forward traffic.");
+                    g_clients[i].print("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\nAll backends are offline.");
                     g_clients[i].stop();
                 }
                 
@@ -115,6 +122,7 @@ void loop() {
         
         if (!assigned) {
             Serial.println("Server Full! Rejecting client.");
+            newClient.print("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\nServer is at maximum capacity (7 clients).");
             newClient.stop();
         }
     }
@@ -157,7 +165,9 @@ String set_server_ip(){
     while(true){
         if(Serial.available()){
             char c = Serial.read();
-            if(c == '\n') break;
+            if(c == '\n' || c == '\r') {
+                break;
+            }
             input += c;
         }
         delay(10); // to prevent watchdog timeout errors

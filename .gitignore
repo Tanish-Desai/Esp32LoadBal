@@ -1,1 +1,3 @@
 proj.code-workspace
+__pycache__/
+*.py[cod]
