@@ -1,8 +1,8 @@
-# ESP32 Load Balancer & Reverse Proxy
+# ESP32 RL-based Load Balancer
 
-A Proof-of-Concept implementation of a Wi-Fi-based Reverse Proxy and Load Balancer using the ESP32.
+A Proof-of-Concept implementation of a Wi-Fi-based Reverse Proxy and Reinforcement Learning Load Balancer using the ESP32.
 
-This project demonstrates how an embedded device can act as a **Gateway** between a client and multiple backend servers. It sits in the middle, accepts incoming connections, and distributes traffic to backend servers (running on a laptop) using a basic Round-Robin algorithm.
+This project demonstrates how an embedded device can act as a **Gateway** between a client and multiple backend servers. It sits in the middle, accepts incoming connections, and distributes traffic to backend servers using Reinforcement Learning (Q-Learning) and a basic Round-Robin algorithm.
 
 ## 🏗 Architecture
 
@@ -13,10 +13,8 @@ This project demonstrates how an embedded device can act as a **Gateway** betwee
 
 ## 🚀 Features
 
-* **"Potato" Load Balancing:** Implements a simple **Round-Robin** strategy.
-    * Client 1 ➡️ Forwarded to Port `8080`
-    * Client 2 ➡️ Forwarded to Port `8081`
-    * (Repeats)
+* **Reinforcement Learning (Q-Learning) Load Balancing:** Implements a smarter routing strategy based on server feedback and performance.
+* **Basic Round-Robin Load Balancing:** Can fall back to a simple Round-Robin strategy.
 * **Non-Blocking I/O:** Uses a **1KB Buffer** to stream data between client and server without blocking the main loop or exhausting RAM.
 * **Traffic Inspection:** Scans incoming payloads for specific keywords (e.g., "END") to handle connection termination dynamically.
 * **Backend:** Simple Python TCP server scripts used to simulate the backend nodes.
