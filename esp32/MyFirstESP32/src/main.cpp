@@ -1,6 +1,11 @@
+#include<Arduino.h>
 #include <WiFi.h>
 #include<WiFiManager.h>
 #include<Preferences.h>
+
+#include <LoadBalancerStrategy.h>
+#include <RoundRobin.h>
+#include <QLearning.h>
 
 // The "Real" Server (Your Laptop)
 const int MAX_BACKENDS = 5;
@@ -27,6 +32,8 @@ const int MAX_CLIENTS = 7;
 WiFiClient g_clients[MAX_CLIENTS];
 WiFiClient g_backends[MAX_CLIENTS];
 // -----------------------------------------------
+
+LoadBalancerStrategy* lb_strategy;
 
 // Forward Declaring funcs
 void talk(WiFiClient& c1, WiFiClient& c2);
@@ -79,6 +86,8 @@ void setup() {
     
     num_backends = get_num_backends();
     Serial.printf("Configured for %d backends.\n", num_backends);
+
+    lb_strategy = new RoundRobin(num_backends);
 }
 
 void loop() {
@@ -88,7 +97,6 @@ void loop() {
     if (newClient) {
         Serial.println("New connection request received...");
         bool assigned = false;
-        static int current_backend_idx = 0;
         
         for (int i = 0; i < MAX_CLIENTS; i++) {
             if (!g_clients[i] || !g_clients[i].connected()) {
@@ -98,11 +106,10 @@ void loop() {
                 // Connect Backend
                 bool backend_connected = false;
                 for (int j = 0; j < num_backends; j++) {
-                    int port_idx = (current_backend_idx + j) % num_backends;
+                    int port_idx = lb_strategy->getNextBackend();
                     if (g_backends[i].connect(server_ip.c_str(), backend_ports[port_idx])) {
                         Serial.printf("Backend Connected (Port %d)\n", backend_ports[port_idx]);
                         backend_connected = true;
-                        current_backend_idx = (port_idx + 1) % num_backends;
                         break;
                     } else {
                         Serial.printf("Backend Failed on Port %d. Trying next...\n", backend_ports[port_idx]);
