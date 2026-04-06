@@ -6,6 +6,7 @@
 #include <LoadBalancerStrategy.h>
 #include <RoundRobin.h>
 #include <QLearning.h>
+#include <EmaResponseTime.h>
 
 // The "Real" Server (Your Laptop)
 const int MAX_BACKENDS = 5;
@@ -100,9 +101,12 @@ void setup() {
     if (strategy_choice == 1) {
         lb_strategy = new RoundRobin(num_backends);
         Serial.println("Selected Strategy: Round Robin");
-    } else {
+    } else if (strategy_choice == 2) {
         lb_strategy = new QLearning(num_backends, MAX_CLIENTS);
         Serial.println("Selected Strategy: Q-Learning");
+    } else {
+        lb_strategy = new EmaResponseTime(num_backends);
+        Serial.println("Selected Strategy: EMA Response Time");
     }
 }
 
@@ -259,7 +263,7 @@ int get_num_backends(){
 }
 
 int get_strategy_choice(){
-    Serial.println("Select Load Balancing Strategy (1: Round Robin, 2: Q-Learning): ");
+    Serial.println("Select Load Balancing Strategy (1: Round Robin, 2: Q-Learning, 3: EMA Response Time): ");
     while(Serial.available()) Serial.read(); // clear buffer
 
     String input = "";
@@ -275,6 +279,6 @@ int get_strategy_choice(){
         delay(10); // to prevent watchdog timeout errors
     }
     int choice = input.toInt();
-    if (choice != 1 && choice != 2) choice = 1;
+    if (choice < 1 || choice > 3) choice = 1;
     return choice;
 }
