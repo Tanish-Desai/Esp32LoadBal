@@ -204,7 +204,7 @@ socket.on('server_event', (data) => {
         if (el) el.innerText = totalRequestsReceived;
     }
     
-    if (['START', 'STOP', 'STALL', 'RESUME'].includes(data.action)) {
+    if (['START', 'STOP', 'LATENCY_UPDATE'].includes(data.action)) {
         refreshState();
     }
 });
@@ -266,22 +266,24 @@ function renderServers() {
         d.className = 'border border-gray-200 dark:border-gray-700 rounded p-3 flex justify-between items-center text-sm bg-white dark:bg-gray-800';
         
         let statusTag = s.running 
-            ? (s.stalled ? '<span class="text-orange-600 dark:text-orange-500 font-bold">Stalled</span>' : '<span class="text-green-600 dark:text-green-500 font-bold">Running</span>') 
+            ? '<span class="text-green-600 dark:text-green-500 font-bold">Running</span>' 
             : '<span class="text-gray-500 dark:text-gray-400 font-bold">Stopped</span>';
 
         d.innerHTML = `
             <div>
-                <strong class="dark:text-white">Port ${s.port}</strong> <span class="text-gray-500 dark:text-gray-400 text-xs">(${s.ip}, Lag: ${s.latency}%)</span>
+                <strong class="dark:text-white">Port ${s.port}</strong> <span class="text-gray-500 dark:text-gray-400 text-xs">(${s.ip})</span>
                 <div class="mt-1">${statusTag}</div>
             </div>
-            <div class="flex gap-1 flex-col">
-                <div class="flex gap-1 justify-end">
+            <div class="flex gap-2 flex-col items-end">
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-500 dark:text-gray-400">Latency %</label>
+                    <input type="number" min="0" max="100" value="${s.latency}" onchange="updateLatency(${s.port}, this.value)" class="w-16 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 py-1 text-xs text-right">
+                </div>
+                <div class="flex gap-1 justify-end mt-1">
                     ${!s.running ? `<button onclick="cmdServer(${s.port}, 'start')" class="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200 px-2 py-1 hover:bg-green-200 dark:hover:bg-green-800 rounded">Start</button>` : ''}
-                    ${s.running && !s.stalled ? `<button onclick="cmdServer(${s.port}, 'stall')" class="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200 px-2 py-1 hover:bg-orange-200 dark:hover:bg-orange-800 rounded">Stall</button>` : ''}
-                    ${s.running && s.stalled ? `<button onclick="cmdServer(${s.port}, 'resume')" class="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 px-2 py-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded">Resume</button>` : ''}
                     ${s.running ? `<button onclick="cmdServer(${s.port}, 'stop')" class="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200 px-2 py-1 hover:bg-red-200 dark:hover:bg-red-800 rounded">Stop</button>` : ''}
                 </div>
-                <button onclick="cmdServer(${s.port}, 'delete', 'DELETE')" class="text-xs text-red-500 hover:underline text-right">Remove</button>
+                <button onclick="cmdServer(${s.port}, 'delete', 'DELETE')" class="text-xs text-red-500 hover:underline text-right mt-1">Remove</button>
             </div>
         `;
         container.appendChild(d);
@@ -315,10 +317,23 @@ window.cmdServer = async (port, action, method='POST') => {
     setTimeout(refreshState, 200); // give backend a slice to finish
 };
 
+window.updateLatency = async (port, latencyValue) => {
+    await fetchApi(`/api/servers/${port}/latency`, {
+        method: 'POST',
+        body: JSON.stringify({ latency: latencyValue })
+    });
+    setTimeout(refreshState, 200);
+};
+
 window.cmdClient = async (id, action, method='POST') => {
     await fetchApi(`/api/clients/${id}/${action}`, { method });
     setTimeout(refreshState, 200);
-}
+};
+
+window.cmdKillAllClients = async () => {
+    await fetchApi(`/api/clients/stop_all`, { method: 'POST' });
+    setTimeout(refreshState, 200);
+};
 
 // Forms
 document.getElementById('form-create-server').addEventListener('submit', async (e) => {

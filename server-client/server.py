@@ -9,7 +9,6 @@ class ManagedServer(threading.Thread):
         self.port = port
         self.server_socket = None
         self.running = False
-        self.stalled = False
         self.latency = latency
         self.max_timeout = 2.0 # 2.0 corresponds to default client timeout
         self.client_threads = []
@@ -38,16 +37,12 @@ class ManagedServer(threading.Thread):
             self.server_socket.listen(self.max_clients)
             self.server_socket.settimeout(1.0)
             self.running = True
-            self.log_event("START", f"Listening on {self.ip_address}:{self.port}")
+            self.log_event("START", f"Listening on {self.ip_address}:{self.port} with latency {self.latency}%")
         except Exception as e:
             self.log_event("ERROR", f"Failed to bind: {e}")
             return
 
         while self.running:
-            if self.stalled:
-                time.sleep(0.5) # Still running but not accepting
-                continue
-                
             try:
                 client_socket, client_address = self.server_socket.accept()
                 self.log_event("CONNECT", f"Client connected: {client_address}")
@@ -78,7 +73,7 @@ class ManagedServer(threading.Thread):
         self.active_sockets.append(client_socket)
         try:
             client_socket.settimeout(2.0) # Prevents infinite block on recv
-            while self.running and not self.stalled:
+            while self.running:
                 try:
                     request = client_socket.recv(1024)
                 except socket.timeout:
@@ -111,13 +106,9 @@ class ManagedServer(threading.Thread):
             if client_socket in self.active_sockets:
                 self.active_sockets.remove(client_socket)
 
-    def stall(self):
-        self.stalled = True
-        self.log_event("STALL", "Server stalled (ignoring new connections)")
-
-    def resume(self):
-        self.stalled = False
-        self.log_event("RESUME", "Server resumed")
+    def set_latency(self, latency):
+        self.latency = latency
+        self.log_event("LATENCY_UPDATE", f"Latency updated to {self.latency}%")
 
     def stop(self):
         self.running = False

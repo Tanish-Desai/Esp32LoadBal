@@ -93,7 +93,6 @@ def get_servers():
             'port': port,
             'ip': srv.ip_address,
             'running': srv.running,
-            'stalled': srv.stalled,
             'max_clients': srv.max_clients,
             'latency': srv.latency
         })
@@ -132,19 +131,14 @@ def stop_server(port):
     servers[port].stop()
     return jsonify({'status': 'stopped'})
 
-@app.route('/api/servers/<int:port>/stall', methods=['POST'])
-def stall_server(port):
+@app.route('/api/servers/<int:port>/latency', methods=['POST'])
+def update_server_latency(port):
     if port not in servers:
         return jsonify({'error': 'Server not found'}), 404
-    servers[port].stall()
-    return jsonify({'status': 'stalled'})
-
-@app.route('/api/servers/<int:port>/resume', methods=['POST'])
-def resume_server(port):
-    if port not in servers:
-        return jsonify({'error': 'Server not found'}), 404
-    servers[port].resume()
-    return jsonify({'status': 'resumed'})
+    data = request.json
+    latency = float(data.get('latency', 0.0))
+    servers[port].set_latency(latency)
+    return jsonify({'status': 'updated'})
 
 @app.route('/api/servers/<int:port>/delete', methods=['DELETE'])
 def delete_server(port):
@@ -196,6 +190,13 @@ def stop_client(client_id):
     builders[client_id].stop()
     del builders[client_id]
     return jsonify({'status': 'stopped'})
+
+@app.route('/api/clients/stop_all', methods=['POST'])
+def stop_all_clients():
+    for cid in list(builders.keys()):
+        builders[cid].stop()
+        del builders[cid]
+    return jsonify({'status': 'stopped all'})
 
 
 if __name__ == '__main__':
