@@ -46,6 +46,7 @@ LoadBalancerStrategy* lb_strategy;
 // Forward Declaring funcs
 void talk(WiFiClient& c1, WiFiClient& c2);
 int get_num_backends();
+int get_strategy_choice();
 
 void setup() {
     Serial.begin(115200);
@@ -95,7 +96,14 @@ void setup() {
     num_backends = get_num_backends();
     Serial.printf("Configured for %d backends.\n", num_backends);
 
-    lb_strategy = new QLearning(num_backends, MAX_CLIENTS);
+    int strategy_choice = get_strategy_choice();
+    if (strategy_choice == 1) {
+        lb_strategy = new RoundRobin(num_backends);
+        Serial.println("Selected Strategy: Round Robin");
+    } else {
+        lb_strategy = new QLearning(num_backends, MAX_CLIENTS);
+        Serial.println("Selected Strategy: Q-Learning");
+    }
 }
 
 int get_active_clients() {
@@ -248,4 +256,25 @@ int get_num_backends(){
     if (n < 1) n = 1;
     if (n > 5) n = 5;
     return n;
+}
+
+int get_strategy_choice(){
+    Serial.println("Select Load Balancing Strategy (1: Round Robin, 2: Q-Learning): ");
+    while(Serial.available()) Serial.read(); // clear buffer
+
+    String input = "";
+    while(true){
+        if(Serial.available()){
+            char c = Serial.read();
+            if(c == '\n' || c == '\r') {
+                if (input.length() > 0) break;
+                else continue;
+            }
+            input += c;
+        }
+        delay(10); // to prevent watchdog timeout errors
+    }
+    int choice = input.toInt();
+    if (choice != 1 && choice != 2) choice = 1;
+    return choice;
 }
