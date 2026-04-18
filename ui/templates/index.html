@@ -135,15 +135,16 @@
                         <canvas id="trafficChart"></canvas>
                     </div>
 
-                    <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded mb-4 text-center">
-                        <div class="font-semibold text-gray-500 dark:text-gray-400">Total Requests Received (All Time)
+                    <div class="p-2 bg-gray-50 dark:bg-gray-700 rounded mb-4 flex justify-between items-center">
+                        <div class="font-semibold text-gray-500 dark:text-gray-400 text-sm">Total Requests (All Time)
                         </div>
-                        <div id="stat-total-reqs" class="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-1">0
-                        </div>
+                        <div id="stat-total-reqs" class="text-xl font-bold text-blue-600 dark:text-blue-400">0</div>
                     </div>
 
-                    <div id="live-stats" class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm dark:text-gray-300">
-                        <!-- Server specific period requests will be injected here -->
+                    <h3 class="text-md font-semibold mb-2 text-gray-700 dark:text-gray-300">Average Response Time (ms)
+                    </h3>
+                    <div class="relative h-48 w-full mb-4">
+                        <canvas id="avgResponseTimeChart"></canvas>
                     </div>
                 </div>
 

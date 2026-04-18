@@ -68,6 +68,38 @@ const totalChartCfg = {
 };
 const totalPeriodChart = new Chart(ctxTotal, totalChartCfg);
 
+const ctxAvg = document.getElementById('avgResponseTimeChart').getContext('2d');
+const avgChartCfg = {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'Average Response Time (ms)',
+            data: [],
+            borderColor: '#F59E0B',
+            tension: 0.2,
+            fill: true,
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            x: {
+                title: { display: true, text: 'Time' },
+                ticks: { display: false }
+            },
+            y: {
+                title: { display: true, text: 'Latency (ms)' },
+                min: 0,
+            }
+        },
+        animation: { duration: 0 }
+    }
+};
+const avgResponseTimeChart = new Chart(ctxAvg, avgChartCfg);
+
 // Socket IO Events
 socket.on('connect', () => {
     const el = document.getElementById('socket-status');
@@ -86,6 +118,8 @@ socket.on('disconnect', () => {
 const currentRequestCounts = {}; // { port: count }
 const lastNonZeroCounts = {}; // { port: count }
 let totalRequestsReceived = 0;
+let periodTotalResponseTime = 0;
+let periodPongCount = 0;
 let UPDATE_INTERVAL_MS = parseInt(document.getElementById('chart-refresh')?.value) || 250;
 let chartInterval;
 
@@ -96,6 +130,7 @@ function startChartInterval() {
         const now = new Date().toLocaleTimeString();
         trafficChart.data.labels.push(now);
         totalPeriodChart.data.labels.push(now);
+        avgResponseTimeChart.data.labels.push(now);
 
         let periodTotal = 0;
         servers.forEach(srv => {
@@ -136,6 +171,18 @@ function startChartInterval() {
         const periodTotalDataset = totalPeriodChart.data.datasets.find(d => d.label === 'Total Period Requests (All)');
         if (periodTotalDataset) periodTotalDataset.data.push(periodTotal);
 
+        const avgDataset = avgResponseTimeChart.data.datasets[0];
+        const avgResp = periodPongCount > 0 ? (periodTotalResponseTime / periodPongCount) : 0;
+        
+        if (periodPongCount > 0) {
+            avgDataset.data.push(avgResp);
+        } else {
+            avgDataset.data.push(avgDataset.data.length > 0 ? avgDataset.data[avgDataset.data.length - 1] : 0);
+        }
+        
+        periodTotalResponseTime = 0;
+        periodPongCount = 0;
+
         // Keep last 60 ticks
         if (trafficChart.data.labels.length > 60) {
             trafficChart.data.labels.shift();
@@ -143,35 +190,19 @@ function startChartInterval() {
             
             totalPeriodChart.data.labels.shift();
             totalPeriodChart.data.datasets.forEach(d => d.data.shift());
+
+            avgResponseTimeChart.data.labels.shift();
+            avgDataset.data.shift();
         }
         
         trafficChart.update();
         totalPeriodChart.update();
+        avgResponseTimeChart.update();
         
         // Update live stats HTML
         const statTotalParams = document.getElementById('stat-total-reqs');
         if (statTotalParams) {
             statTotalParams.innerText = totalRequestsReceived;
-        }
-
-        // Render server-specific period stats
-        const liveStatsContainer = document.getElementById('live-stats');
-        if (liveStatsContainer) {
-            liveStatsContainer.innerHTML = '';
-            servers.sort((a,b) => a.port - b.port).forEach(srv => {
-                const dataset = trafficChart.data.datasets.find(d => d.label === `Server ${srv.port}`);
-                const currentVal = dataset ? dataset.data[dataset.data.length - 1] : 0;
-                const lastNonZero = lastNonZeroCounts[srv.port] || 0;
-                
-                const div = document.createElement('div');
-                div.className = 'p-3 bg-gray-50 dark:bg-gray-700 rounded text-center border border-gray-200 dark:border-gray-600';
-                div.innerHTML = `
-                    <div class="font-semibold text-gray-500 dark:text-gray-400">Server ${srv.port}</div>
-                    <div class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">${currentVal}</div>
-                    <div class="text-xs text-gray-400 dark:text-gray-500 mt-1">Last >0: <span class="font-bold">${lastNonZero}</span></div>
-                `;
-                liveStatsContainer.appendChild(div);
-            });
         }
         
     }, UPDATE_INTERVAL_MS);
@@ -213,6 +244,11 @@ socket.on('server_event', (data) => {
 socket.on('client_event', (data) => {
     appendLog(`[CLIENT:${data.client_id}] ${data.action} - ${data.details}`, data.action === 'ERROR' ? 'text-red-400' : 'text-purple-300');
     
+    if (data.action === 'PONG' && data.response_time !== undefined) {
+        periodTotalResponseTime += data.response_time;
+        periodPongCount += 1;
+    }
+
     if (['STOP', 'ERROR', 'PONG', 'TIMEOUT'].includes(data.action)) {
         // Refresh periodically on structure changes
         let requireRefresh = ['STOP', 'ERROR'].includes(data.action);

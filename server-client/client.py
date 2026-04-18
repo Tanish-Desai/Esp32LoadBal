@@ -15,14 +15,17 @@ class MockClient(threading.Thread):
         self.event_callback = event_callback
         self.daemon = True
 
-    def log_event(self, action, details=""):
+    def log_event(self, action, details="", response_time=None):
         if self.event_callback:
-            self.event_callback({
+            payload = {
                 'client_id': self.client_id,
                 'action': action,
                 'details': details,
                 'timestamp': time.time()
-            })
+            }
+            if response_time is not None:
+                payload['response_time'] = response_time
+            self.event_callback(payload)
         print(f"[Client:{self.client_id}] {action} - {details}")
 
     def run(self):
@@ -31,6 +34,7 @@ class MockClient(threading.Thread):
         self.socket.settimeout(self.timeout)
         
         try:
+            start_time = time.time()
             self.log_event("CONNECTING", f"Connecting to {self.target_ip}:{self.target_port}")
             self.socket.connect((self.target_ip, self.target_port))
             self.log_event("CONNECTED", "Successfully connected")
@@ -46,12 +50,14 @@ class MockClient(threading.Thread):
             
             # Wait for response (timeout is handled by socket.settimeout(2.0))
             response = self.socket.recv(1024)
+            end_time = time.time()
+            
             if not response:
                 print(f"[Client:{self.client_id}] TERMINATION REASON: Connection closed by server before ACK")
                 self.log_event("DISCONNECTED", "Connection closed by server")
             else:
                 resp_text = response.decode('utf-8', errors='ignore').split('\n')[0].strip()
-                self.log_event("PONG", f"Received: {resp_text}")
+                self.log_event("PONG", f"Received: {resp_text}", response_time=(end_time - start_time)*1000)
                 
                 if "200 OK" in resp_text:
                     print(f"[Client:{self.client_id}] TERMINATION REASON: ACK (200 OK) received")

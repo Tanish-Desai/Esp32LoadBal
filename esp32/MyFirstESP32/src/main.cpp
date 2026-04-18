@@ -212,7 +212,6 @@ void talk(WiFiClient& c1, WiFiClient& c2){
 
         c1.read(buffer, len);
         c2.write(buffer, len);
-        Serial.write(buffer, len);
         for(int i=0; i<len - 2; i++){
             if(buffer[i] == 'E' && buffer[i+1] == 'N' && buffer[i+2] == 'D'){
                 Serial.println("[CONTROL] END received. Terminating...");
