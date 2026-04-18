@@ -29,8 +29,14 @@ This project demonstrates how an embedded device can act as a **Gateway** betwee
     
 - **Non-Blocking I/O:** Uses a **1KB Buffer** to stream data between client and server without blocking the main loop or exhausting RAM.
   
-- **Management UI Dashboard:** A rich, dark-mode compatible Flask web application leveraging WebSockets. It features real-time Chart.js telemetry, dynamic backend server creation, artificial latency injection, and mock client spawning.
+- **Management UI Dashboard:** A rich, dark-mode compatible Flask web application leveraging WebSockets. Features include:
   
+  - **Advanced Real-time Telemetry:** Dual Chart.js visualizations displaying **Total Period Requests** (to gauge overall throughput and visualize average response times) and **Server Requests in Period** (to monitor live load distribution). Includes adjustable chart refresh rates.
+    
+  - **Live Statistics & Logs:** An active request stream console and dynamic statistic cards tracking total requests and individual server performance metrics.
+    
+  - **Dynamic Control:** Spawn backend servers on specific ports, inject artificial latency for stress testing algorithms, and manage multi-threaded mock clients on the fly.
+    
 
 ## 🛠️ Tech Stack
 
