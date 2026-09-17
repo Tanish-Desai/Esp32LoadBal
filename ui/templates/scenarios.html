@@ -1,0 +1,1735 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three Failures, Three Balancers</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+    <style>
+        /* ------------------------------------------------------------------
+           Tokens. The bare :root block is the complete light palette; the two
+           blocks after it redefine only tokens, so an explicit choice beats the
+           OS in both directions and the un-stamped (system) state still works.
+           Series colours are the CVD-validated triplet used across the project.
+        ------------------------------------------------------------------ */
+        :root {
+            --ground: #eceff3;
+            --surface: #ffffff;
+            --surface-2: #f4f7f9;
+            --surface-3: #e5eaef;
+            --rule: #d6dde4;
+            --rule-strong: #b4c0ca;
+            --ink: #0f1720;
+            --ink-2: #44525e;
+            --ink-3: #74838f;
+
+            --s-rr: #2a78d6;
+            --s-ql: #eb6834;
+            --s-ema: #1baf7a;
+
+            --warn: #a8690f;
+            --crit: #c0333f;
+            --band: rgba(192, 51, 63, 0.08);
+            --band-line: rgba(192, 51, 63, 0.38);
+            --shadow: 0 1px 2px rgba(15, 23, 32, .06), 0 8px 24px -14px rgba(15, 23, 32, .25);
+
+            --b1: #1d2a34;
+            --b2: #4d6373;
+            --b3: #8ba0af;
+            --dist-ink-1: #ffffff;
+            --dist-ink-2: #ffffff;
+            --dist-ink-3: #16202a;
+
+            --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+            --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+            --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --ground: #0c1216;
+                --surface: #141c22;
+                --surface-2: #1a242b;
+                --surface-3: #212d35;
+                --rule: #26323b;
+                --rule-strong: #3b4a55;
+                --ink: #e8eef3;
+                --ink-2: #a4b2be;
+                --ink-3: #72828e;
+
+                --s-rr: #3987e5;
+                --s-ql: #d95926;
+                --s-ema: #199e70;
+
+                --warn: #c9902f;
+                --crit: #e0616b;
+                --band: rgba(224, 97, 107, 0.10);
+                --band-line: rgba(224, 97, 107, 0.42);
+                --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px -16px rgba(0, 0, 0, .8);
+
+                --b1: #cfdce4;
+                --b2: #93a9b8;
+                --b3: #5a6f81;
+                --dist-ink-1: #0c1216;
+                --dist-ink-2: #0c1216;
+                --dist-ink-3: #eef3f7;
+            }
+        }
+
+        :root[data-theme="dark"] {
+            --ground: #0c1216;
+            --surface: #141c22;
+            --surface-2: #1a242b;
+            --surface-3: #212d35;
+            --rule: #26323b;
+            --rule-strong: #3b4a55;
+            --ink: #e8eef3;
+            --ink-2: #a4b2be;
+            --ink-3: #72828e;
+
+            --s-rr: #3987e5;
+            --s-ql: #d95926;
+            --s-ema: #199e70;
+
+            --warn: #c9902f;
+            --crit: #e0616b;
+            --band: rgba(224, 97, 107, 0.10);
+            --band-line: rgba(224, 97, 107, 0.42);
+            --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px -16px rgba(0, 0, 0, .8);
+
+            --b1: #cfdce4;
+            --b2: #93a9b8;
+            --b3: #5a6f81;
+            --dist-ink-1: #0c1216;
+            --dist-ink-2: #0c1216;
+            --dist-ink-3: #eef3f7;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+        }
+
+        body {
+            background: var(--ground);
+            color: var(--ink);
+            font-family: var(--body);
+            font-size: 16px;
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .wrap {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding-inline: 20px;
+            padding-block: 0 72px;
+        }
+
+        a {
+            color: inherit;
+        }
+
+        /* --- typographic scale --- */
+        h1,
+        h2,
+        h3,
+        h4 {
+            font-family: var(--display);
+            text-wrap: balance;
+            margin: 0;
+            letter-spacing: -0.02em;
+        }
+
+        h1 {
+            font-size: clamp(2.1rem, 5.2vw, 3.4rem);
+            font-weight: 800;
+            line-height: 1.02;
+            letter-spacing: -0.035em;
+        }
+
+        h2 {
+            font-size: clamp(1.5rem, 3vw, 2rem);
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        h3 {
+            font-size: 1.12rem;
+            font-weight: 700;
+        }
+
+        p {
+            margin: 0;
+        }
+
+        .tag {
+            font-family: var(--mono);
+            font-size: .68rem;
+            font-weight: 500;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+        }
+
+        .prose {
+            max-width: 62ch;
+            color: var(--ink-2);
+        }
+
+        .num {
+            font-family: var(--mono);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* --- masthead --- */
+        .masthead {
+            border-bottom: 1px solid var(--rule);
+            background: var(--surface);
+        }
+
+        .masthead .wrap {
+            padding-block: 14px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .brand {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            font-family: var(--mono);
+            font-size: .78rem;
+            letter-spacing: .08em;
+        }
+
+        .brand b {
+            font-weight: 700;
+            letter-spacing: .02em;
+        }
+
+        .navlinks {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .btn {
+            font-family: var(--mono);
+            font-size: .74rem;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            padding: 7px 13px;
+            border-radius: 3px;
+            border: 1px solid var(--rule-strong);
+            background: var(--surface-2);
+            color: var(--ink);
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            transition: background .12s ease, border-color .12s ease;
+        }
+
+        .btn:hover {
+            background: var(--surface-3);
+            border-color: var(--ink-3);
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--s-rr);
+            outline-offset: 2px;
+        }
+
+        .btn--go {
+            border-color: var(--s-ql);
+            color: var(--s-ql);
+            font-weight: 700;
+        }
+
+        /* --- hero --- */
+        .hero {
+            padding-block: 52px 40px;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .hero .lede {
+            font-size: 1.16rem;
+            margin-top: 20px;
+            max-width: 64ch;
+            color: var(--ink-2);
+        }
+
+        .hero .lede strong {
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        .method {
+            margin-top: 28px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0;
+            border: 1px solid var(--rule);
+            border-radius: 4px;
+            background: var(--surface);
+            overflow: hidden;
+        }
+
+        .method div {
+            padding: 14px 16px;
+            border-right: 1px solid var(--rule);
+        }
+
+        .method div:last-child {
+            border-right: 0;
+        }
+
+        .method dt {
+            font-family: var(--mono);
+            font-size: .66rem;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+        }
+
+        .method dd {
+            margin: 4px 0 0;
+            font-size: .95rem;
+            color: var(--ink);
+        }
+
+        /* --- sections --- */
+        section.block {
+            padding-block: 56px;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .sec-head {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+
+        /* --- legend --- */
+        .legend {
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            font-family: var(--mono);
+            font-size: .75rem;
+            color: var(--ink-2);
+        }
+
+        .swatch {
+            width: 14px;
+            height: 3px;
+            border-radius: 2px;
+            display: inline-block;
+        }
+
+        .sw-rr {
+            background: var(--s-rr);
+        }
+
+        .sw-ql {
+            background: var(--s-ql);
+        }
+
+        .sw-ema {
+            background: var(--s-ema);
+        }
+
+        /* --- charts --- */
+        .chartbox {
+            position: relative;
+            width: 100%;
+        }
+
+        .chartbox canvas {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .tip {
+            position: absolute;
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -100%);
+            background: var(--surface);
+            border: 1px solid var(--rule-strong);
+            border-radius: 4px;
+            box-shadow: var(--shadow);
+            padding: 8px 10px;
+            font-family: var(--mono);
+            font-size: .72rem;
+            white-space: nowrap;
+            z-index: 5;
+            transition: opacity .1s ease;
+        }
+
+        .tip b {
+            display: block;
+            color: var(--ink-3);
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .tip i {
+            font-style: normal;
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        .tip .row {
+            color: var(--ink);
+        }
+
+        /* --- scenario card --- */
+        .scenario {
+            display: grid;
+            grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+            gap: 40px;
+            align-items: start;
+        }
+
+        .narr>*+* {
+            margin-top: 16px;
+        }
+
+        .narr h2 {
+            margin-top: 6px;
+        }
+
+        .narr .tagline {
+            font-family: var(--display);
+            font-size: 1.05rem;
+            font-weight: 500;
+            font-style: italic;
+            color: var(--ink-2);
+        }
+
+        .narr p {
+            font-size: .96rem;
+            color: var(--ink-2);
+        }
+
+        .narr .sub {
+            font-family: var(--mono);
+            font-size: .66rem;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+            margin-bottom: 3px;
+            display: block;
+        }
+
+        .watch {
+            border-left: 2px solid var(--s-ql);
+            padding-left: 14px;
+        }
+
+        .watch p {
+            color: var(--ink);
+        }
+
+        .anchor {
+            background: var(--surface);
+            border: 1px solid var(--rule);
+            border-radius: 4px;
+            padding: 14px 16px;
+        }
+
+        .anchor .big {
+            font-family: var(--display);
+            font-weight: 700;
+            font-size: 1.5rem;
+            letter-spacing: -.02em;
+        }
+
+        .anchor p {
+            font-size: .86rem;
+            margin-top: 6px;
+        }
+
+        /* --- instrument panel --- */
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--rule);
+            border-radius: 4px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .panel-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--rule);
+            background: var(--surface-2);
+        }
+
+        .panel-bar .clock {
+            font-family: var(--mono);
+            font-size: .74rem;
+            color: var(--ink-2);
+        }
+
+        .panel-body {
+            padding: 16px 14px 18px;
+        }
+
+        .tiles {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            border-top: 1px solid var(--rule);
+            border-bottom: 1px solid var(--rule);
+        }
+
+        .tile {
+            padding: 13px 14px;
+            border-right: 1px solid var(--rule);
+        }
+
+        .tile:last-child {
+            border-right: 0;
+        }
+
+        .tile.win {
+            background: var(--surface-2);
+        }
+
+        .tile-name {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-family: var(--mono);
+            font-size: .68rem;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--ink-2);
+        }
+
+        .tile-name i {
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
+            display: inline-block;
+            flex: none;
+        }
+
+        .tile-val {
+            font-family: var(--display);
+            font-weight: 800;
+            font-size: 2rem;
+            letter-spacing: -.035em;
+            line-height: 1.1;
+            margin-top: 4px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .tile-sub {
+            font-family: var(--mono);
+            font-size: .7rem;
+            color: var(--ink-3);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .tile-flag {
+            font-family: var(--mono);
+            font-size: .62rem;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            margin-top: 6px;
+            display: inline-block;
+            padding: 2px 6px;
+            border: 1px solid var(--rule-strong);
+            border-radius: 2px;
+            color: var(--ink-2);
+        }
+
+        .chart-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 12px;
+            margin: 18px 0 6px;
+            flex-wrap: wrap;
+        }
+
+        .chart-label .tag {
+            color: var(--ink-2);
+        }
+
+        .chart-note {
+            font-size: .8rem;
+            color: var(--ink-3);
+            font-family: var(--mono);
+        }
+
+        /* --- distribution bars --- */
+        .dist {
+            display: grid;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .dist-row {
+            display: grid;
+            grid-template-columns: 96px minmax(0, 1fr);
+            gap: 12px;
+            align-items: center;
+        }
+
+        .dist-name {
+            font-family: var(--mono);
+            font-size: .7rem;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--ink-2);
+            text-align: right;
+        }
+
+        .dist-track {
+            display: flex;
+            height: 16px;
+            border-radius: 3px;
+            overflow: hidden;
+            background: var(--surface-3);
+            gap: 2px;
+        }
+
+        .dist-seg {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 5px;
+            font-family: var(--mono);
+            font-size: .63rem;
+            font-weight: 700;
+            min-width: 0;
+            overflow: hidden;
+            transition: flex-basis .2s linear;
+        }
+
+        .dist-seg:first-child {
+            border-radius: 3px 0 0 3px;
+        }
+
+        .dist-seg:last-child {
+            border-radius: 0 3px 3px 0;
+        }
+
+        .dist-key {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .dist-key span {
+            font-family: var(--mono);
+            font-size: .68rem;
+            color: var(--ink-2);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dist-key i {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            display: inline-block;
+        }
+
+        /* --- verdict --- */
+        .verdict {
+            margin-top: 18px;
+            border: 1px solid var(--rule-strong);
+            border-radius: 4px;
+            padding: 13px 15px;
+            background: var(--surface-2);
+        }
+
+        .verdict .tag {
+            color: var(--ink-2);
+        }
+
+        .verdict p {
+            font-size: .92rem;
+            margin-top: 5px;
+        }
+
+        .verdict.upset {
+            border-color: var(--warn);
+        }
+
+        /* --- tables --- */
+        .tablewrap {
+            overflow-x: auto;
+            margin-top: 18px;
+            border: 1px solid var(--rule);
+            border-radius: 4px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: .85rem;
+            min-width: 520px;
+        }
+
+        th,
+        td {
+            padding: 9px 12px;
+            text-align: right;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        th:first-child,
+        td:first-child {
+            text-align: left;
+        }
+
+        thead th {
+            font-family: var(--mono);
+            font-size: .66rem;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+            font-weight: 500;
+            background: var(--surface-2);
+        }
+
+        tbody td {
+            font-family: var(--mono);
+            font-variant-numeric: tabular-nums;
+            color: var(--ink);
+        }
+
+        tbody td:first-child {
+            font-family: var(--body);
+        }
+
+        tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .cell-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
+            margin-right: 8px;
+            vertical-align: -1px;
+        }
+
+        /* --- threshold section --- */
+        .threshold {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+            gap: 40px;
+            align-items: start;
+            margin-top: 26px;
+        }
+
+        .readout {
+            border: 1px solid var(--rule);
+            background: var(--surface);
+            border-radius: 4px;
+            padding: 18px;
+        }
+
+        .readout .big {
+            font-family: var(--display);
+            font-size: clamp(2.6rem, 6vw, 3.6rem);
+            font-weight: 800;
+            letter-spacing: -.04em;
+            line-height: 1;
+            color: var(--s-ql);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* --- weakness --- */
+        .weak {
+            border: 1px solid var(--warn);
+            border-radius: 4px;
+            background: var(--surface);
+            padding: 22px;
+            margin-top: 24px;
+        }
+
+        .weak h3 {
+            margin-bottom: 8px;
+        }
+
+        .weak p+p {
+            margin-top: 12px;
+        }
+
+        .weak ul {
+            margin: 12px 0 0;
+            padding-left: 18px;
+            color: var(--ink-2);
+            font-size: .93rem;
+        }
+
+        .weak li+li {
+            margin-top: 7px;
+        }
+
+        /* --- power strip --- */
+        .powerstrip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1px;
+            background: var(--rule);
+            border: 1px solid var(--rule);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 16px;
+        }
+
+        .powerstrip div {
+            background: var(--surface);
+            padding: 12px 14px;
+        }
+
+        .powerstrip .dev {
+            font-family: var(--mono);
+            font-size: .67rem;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+        }
+
+        .powerstrip .w {
+            font-family: var(--display);
+            font-weight: 700;
+            font-size: 1.32rem;
+            letter-spacing: -.02em;
+            margin-top: 2px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .powerstrip .kwh {
+            font-family: var(--mono);
+            font-size: .72rem;
+            color: var(--ink-2);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .powerstrip .lead .w {
+            color: var(--s-ql);
+        }
+
+        /* --- sources --- */
+        .sources {
+            columns: 2;
+            column-gap: 40px;
+            margin-top: 20px;
+        }
+
+        .src {
+            break-inside: avoid;
+            margin-bottom: 18px;
+            font-size: .85rem;
+            color: var(--ink-2);
+        }
+
+        .src b {
+            display: block;
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        .src a {
+            font-family: var(--mono);
+            font-size: .72rem;
+            word-break: break-all;
+            color: var(--s-rr);
+        }
+
+        .status-pill {
+            font-family: var(--mono);
+            font-size: .6rem;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            border: 1px solid var(--rule-strong);
+            border-radius: 2px;
+            padding: 1px 5px;
+            color: var(--ink-3);
+            margin-left: 6px;
+            white-space: nowrap;
+        }
+
+        .loading {
+            padding: 60px 0;
+            font-family: var(--mono);
+            color: var(--ink-3);
+        }
+
+        .err {
+            border: 1px solid var(--crit);
+            color: var(--crit);
+            padding: 16px;
+            border-radius: 4px;
+            font-family: var(--mono);
+            font-size: .85rem;
+        }
+
+        @media (max-width: 900px) {
+
+            .scenario,
+            .threshold {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 26px;
+            }
+
+            .sources {
+                columns: 1;
+            }
+
+            .tiles {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .tile {
+                border-right: 0;
+                border-bottom: 1px solid var(--rule);
+            }
+
+            .tile:last-child {
+                border-bottom: 0;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                transition: none !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="wrap">
+            <div class="brand">
+                <b>ESP32 RL Load Balancer</b>
+                <span style="color:var(--ink-3)">/ scenario bench</span>
+            </div>
+            <div class="navlinks">
+                <a class="btn" href="/">Live dashboard</a>
+                <button class="btn" id="theme-toggle" type="button">Theme</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="wrap" id="root">
+        <div class="loading">Loading measurement data&hellip;</div>
+    </main>
+
+    <script type="module">
+        import { Simulation } from '/static/sim-engine.js';
+
+        /* =================================================================
+           Colour access. Charts read the CSS custom properties so a theme
+           change repaints with the same tokens the rest of the page uses.
+        ================================================================= */
+        const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+        const STRATS = [
+            { key: 'round_robin', label: 'Round Robin', short: 'RR', token: '--s-rr' },
+            { key: 'q_learning', label: 'Q-Learning', short: 'QL', token: '--s-ql' },
+            { key: 'ema', label: 'EMA Response Time', short: 'EMA', token: '--s-ema' },
+        ];
+        const STRAT_BY_KEY = Object.fromEntries(STRATS.map(s => [s.key, s]));
+
+        const TICK_MS = 50;      // must match sim-engine
+        const WINDOW = 20;       // ticks per charted point, matches sim-engine
+
+        /* =================================================================
+           Canvas line chart.
+
+           One scale places marks, ticks and labels. Padding leaves room for
+           the outermost labels so nothing is clipped at the viewBox edge.
+        ================================================================= */
+        const PAD = { l: 54, r: 14, t: 16, b: 34 };
+
+        function niceCeil(v) {
+            if (v <= 0) return 1;
+            const mag = Math.pow(10, Math.floor(Math.log10(v)));
+            const n = v / mag;
+            const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+            return step * mag;
+        }
+
+        function drawLineChart(canvas, spec) {
+            const dpr = window.devicePixelRatio || 1;
+            const cssW = canvas.clientWidth || 600;
+            const cssH = spec.height || 210;
+            canvas.width = Math.round(cssW * dpr);
+            canvas.height = Math.round(cssH * dpr);
+            canvas.style.height = cssH + 'px';
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, cssW, cssH);
+
+            const ink = css('--ink'), ink2 = css('--ink-2'), ink3 = css('--ink-3');
+            const rule = css('--rule'), ruleStrong = css('--rule-strong');
+
+            const n = spec.x.length;
+            const plotW = cssW - PAD.l - PAD.r;
+            const plotH = cssH - PAD.t - PAD.b;
+            if (plotW <= 10 || n === 0) return null;
+
+            let maxV = 0;
+            for (const s of spec.series) for (const v of s.data) if (v != null && v > maxV) maxV = v;
+            const yMax = spec.yMax != null ? spec.yMax : niceCeil(maxV * 1.12 || 1);
+            const yMin = 0;
+
+            const X = (i) => PAD.l + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+            const Y = (v) => PAD.t + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+
+            // shaded bands (e.g. WAN down), drawn first so marks sit above
+            ctx.save();
+            for (const b of (spec.bands || [])) {
+                const x0 = X(Math.max(0, b.from)), x1 = X(Math.min(n - 1, b.to));
+                ctx.fillStyle = css('--band');
+                ctx.fillRect(x0, PAD.t, Math.max(1, x1 - x0), plotH);
+                ctx.strokeStyle = css('--band-line');
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.moveTo(x0, PAD.t); ctx.lineTo(x0, PAD.t + plotH);
+                ctx.moveTo(x1, PAD.t); ctx.lineTo(x1, PAD.t + plotH); ctx.stroke();
+                ctx.setLineDash([]);
+                if (b.label) {
+                    ctx.fillStyle = ink3;
+                    ctx.font = '500 10px "JetBrains Mono", monospace';
+                    ctx.textAlign = 'left';
+                    const tw = ctx.measureText(b.label).width;
+                    const lx = Math.min(x0 + 5, cssW - PAD.r - tw);
+                    ctx.fillText(b.label, Math.max(PAD.l + 2, lx), PAD.t + 11);
+                }
+            }
+            ctx.restore();
+
+            // recessive grid + y labels
+            ctx.strokeStyle = rule;
+            ctx.lineWidth = 1;
+            ctx.fillStyle = ink3;
+            ctx.font = '400 10px "JetBrains Mono", monospace';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            const TICKS = 4;
+            for (let t = 0; t <= TICKS; t++) {
+                const v = yMin + (yMax - yMin) * (t / TICKS);
+                const y = Math.round(Y(v)) + 0.5;
+                ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(cssW - PAD.r, y); ctx.stroke();
+                ctx.fillText(spec.fmtY ? spec.fmtY(v) : String(Math.round(v)), PAD.l - 8, y);
+            }
+
+            // axis
+            ctx.strokeStyle = ruleStrong;
+            ctx.beginPath();
+            ctx.moveTo(PAD.l + 0.5, PAD.t); ctx.lineTo(PAD.l + 0.5, PAD.t + plotH + 0.5);
+            ctx.lineTo(cssW - PAD.r, PAD.t + plotH + 0.5); ctx.stroke();
+
+            // x labels
+            ctx.fillStyle = ink3;
+            ctx.textBaseline = 'top';
+            const every = Math.max(1, Math.ceil(n / 7));
+            for (let i = 0; i < n; i += every) {
+                ctx.textAlign = i === 0 ? 'left' : (i >= n - 1 ? 'right' : 'center');
+                ctx.fillText(spec.x[i], X(i), PAD.t + plotH + 8);
+            }
+            if (spec.xTitle) {
+                ctx.textAlign = 'right';
+                ctx.fillStyle = ink3;
+                ctx.fillText(spec.xTitle, cssW - PAD.r, PAD.t + plotH + 21);
+            }
+
+            // event rules
+            for (const m of (spec.marks || [])) {
+                const x = Math.round(X(m.at)) + 0.5;
+                if (x < PAD.l || x > cssW - PAD.r) continue;
+                ctx.strokeStyle = ruleStrong;
+                ctx.setLineDash([2, 4]);
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + plotH); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // series
+            for (const s of spec.series) {
+                const color = css(s.token);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                let started = false, lastI = -1;
+                for (let i = 0; i < n; i++) {
+                    const v = s.data[i];
+                    if (v == null) { started = false; continue; }
+                    const x = X(i), y = Y(Math.min(v, yMax));
+                    if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+                    lastI = i;
+                }
+                ctx.stroke();
+
+                // emphasised endpoint, ringed in the surface colour so it stays
+                // legible where series overlap
+                if (lastI >= 0) {
+                    const v = Math.min(s.data[lastI], yMax);
+                    ctx.beginPath();
+                    ctx.arc(X(lastI), Y(v), 4.5, 0, Math.PI * 2);
+                    ctx.fillStyle = color; ctx.fill();
+                    ctx.lineWidth = 2; ctx.strokeStyle = css('--surface'); ctx.stroke();
+                }
+            }
+
+            const layout = { X, Y, n, PAD, plotW, plotH, cssW, cssH, spec };
+            canvas._layout = layout;
+            return layout;
+        }
+
+        function attachHover(box, canvas) {
+            let tip = box.querySelector('.tip');
+            if (!tip) { tip = document.createElement('div'); tip.className = 'tip'; box.appendChild(tip); }
+            const hide = () => { tip.style.opacity = '0'; };
+            canvas.addEventListener('mouseleave', hide);
+            canvas.addEventListener('mousemove', (e) => {
+                const L = canvas._layout;
+                if (!L) return;
+                const r = canvas.getBoundingClientRect();
+                const mx = e.clientX - r.left;
+                if (mx < L.PAD.l - 6 || mx > L.cssW - L.PAD.r + 6) { hide(); return; }
+                let best = 0, bestD = Infinity;
+                for (let i = 0; i < L.n; i++) {
+                    const d = Math.abs(L.X(i) - mx);
+                    if (d < bestD) { bestD = d; best = i; }
+                }
+                const sp = L.spec;
+                const rows = sp.series.map(s => {
+                    const v = s.data[best];
+                    return `<div class="row"><i style="background:${css(s.token)}"></i>${s.label} &nbsp;<b style="display:inline;color:var(--ink)">${v == null ? '—' : (sp.fmtTip ? sp.fmtTip(v) : v)}</b></div>`;
+                }).join('');
+                tip.innerHTML = `<b>${sp.xTitle ? sp.xTitle.replace(/^.*\(|\)$/g, '') : ''} ${sp.x[best]}</b>${rows}`;
+                tip.style.left = Math.round(L.X(best)) + 'px';
+                tip.style.top = Math.round(L.PAD.t + 4) + 'px';
+                tip.style.opacity = '1';
+            });
+        }
+
+        /* =================================================================
+           Data
+        ================================================================= */
+        const root = document.getElementById('root');
+        let DATA = null;
+        const registry = [];   // redraw hooks for theme / resize
+
+        function redrawAll() { for (const fn of registry) fn(); }
+
+        const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const fmtInt = (v) => Math.round(v).toLocaleString('en-US');
+
+        /* =================================================================
+           Page
+        ================================================================= */
+        async function boot() {
+            let res;
+            try {
+                res = await fetch('/api/project-data');
+            } catch (e) {
+                root.innerHTML = `<div class="err">Could not reach /api/project-data. Is the Flask app running?</div>`;
+                return;
+            }
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                root.innerHTML = `<div class="err">${esc(body.error || ('HTTP ' + res.status))}</div>`;
+                return;
+            }
+            DATA = await res.json();
+            render();
+        }
+
+        function render() {
+            const sf = DATA.simulation_findings;
+            const hf = sf.headline_finding;
+
+            root.innerHTML = `
+              ${heroHTML(sf)}
+              ${thresholdHTML(hf)}
+              ${DATA.scenarios.map((sc, i) => scenarioHTML(sc, sf.scenario_results[sc.id], i)).join('')}
+              ${weaknessHTML(sf.known_weakness)}
+              ${sourcesHTML()}
+            `;
+
+            buildThreshold(hf);
+            DATA.scenarios.forEach(sc => buildScenario(sc, sf.scenario_results[sc.id]));
+
+            window.addEventListener('resize', debounce(redrawAll, 120));
+        }
+
+        function debounce(fn, ms) { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; }
+
+        /* ---------------- hero ---------------- */
+        function heroHTML(sf) {
+            const seeds = sf.seeds_used.length;
+            return `
+            <div class="hero">
+              <span class="tag">Scenario bench &middot; simulated, reproducible, seeded</span>
+              <h1>Three ways a small network<br>falls over, and what the<br>balancer does about it.</h1>
+              <p class="lede">Each scenario below runs <strong>in your browser</strong> against a line-for-line
+              JavaScript port of the firmware that ships on the ESP32 &mdash; the same Bellman update, the same
+              &epsilon;-decay schedule, the same reward curve, the same seven-socket ceiling. All three strategies
+              see <strong>identical arrival times, identical jitter draws and identical failure events</strong>.
+              The only independent variable is the routing decision.</p>
+              <dl class="method">
+                <div><dt>Primary metric</dt><dd>Goodput &mdash; answered &divide; offered</dd></div>
+                <div><dt>Failures counted</dt><dd>Timeouts <em>and</em> 503 rejections</dd></div>
+                <div><dt>Reported figures</dt><dd class="num">mean of ${seeds} seeds</dd></div>
+                <div><dt>On-screen run</dt><dd class="num">seed 12345, deterministic</dd></div>
+              </dl>
+              <p class="lede" style="font-size:.95rem">
+                Goodput, not mean latency. A strategy that lets slow sessions occupy all seven ESP32 sockets until
+                new arrivals are refused posts a <em>flattering</em> average precisely because the slow requests were
+                never served. Adopting goodput changed our own conclusions: under mean latency Round Robin looked
+                competitive in the factory scenario; under goodput it loses by 14 points.
+              </p>
+            </div>`;
+        }
+
+        /* ---------------- threshold ---------------- */
+        function thresholdHTML(hf) {
+            const widest = hf.table[hf.table.length - 1];
+            const rows = hf.table.map(r => `
+              <tr>
+                <td class="num">${esc(r.spread)}</td>
+                <td class="num">${r.backend_b_ms}</td>
+                <td class="num">${r.round_robin_goodput}</td>
+                <td class="num">${r.q_learning_goodput}</td>
+                <td class="num">${r.ema_goodput}</td>
+                <td class="num" style="color:${r.q_learning_goodput - r.round_robin_goodput > 1 ? 'var(--s-ql)' : 'var(--ink-3)'}">
+                  ${(r.q_learning_goodput - r.round_robin_goodput).toFixed(1)}
+                </td>
+              </tr>`).join('');
+
+            return `
+            <section class="block">
+              <div class="sec-head">
+                <div>
+                  <span class="tag">The finding that survives cross-examination</span>
+                  <h2>Reinforcement learning earns its complexity<br>at a measurable threshold.</h2>
+                </div>
+                <div class="legend">
+                  <span><i class="swatch sw-rr"></i>Round Robin</span>
+                  <span><i class="swatch sw-ql"></i>Q-Learning</span>
+                  <span><i class="swatch sw-ema"></i>EMA Response Time</span>
+                </div>
+              </div>
+
+              <div class="threshold">
+                <div>
+                  <div class="readout">
+                    <span class="tag">Goodput advantage, Q-learning over Round Robin, at ${esc(widest.spread)} spread</span>
+                    <div class="big">+${(widest.q_learning_goodput - widest.round_robin_goodput).toFixed(1)}<span style="font-size:.4em;letter-spacing:0"> pts</span></div>
+                    <p class="prose" style="font-size:.9rem;margin-top:10px">
+                      Two backends, six clients, eight seeds. Everything held constant except the latency
+                      spread between the two backends.
+                    </p>
+                  </div>
+                  <p class="prose" style="margin-top:18px;font-size:.95rem">${esc(hf.interpretation)}</p>
+                  <p class="prose" style="margin-top:14px;font-size:.82rem;font-family:var(--mono);color:var(--ink-3)">
+                    Reproduce: <code>${esc(hf.reproduce)}</code>
+                  </p>
+                </div>
+
+                <div>
+                  <div class="chart-label">
+                    <span class="tag">Goodput vs. backend heterogeneity</span>
+                    <span class="chart-note">% of offered requests answered</span>
+                  </div>
+                  <div class="chartbox" id="thresh-box"><canvas id="thresh-canvas"></canvas></div>
+                  <div class="tablewrap">
+                    <table>
+                      <thead><tr>
+                        <th>Spread</th><th>Slow backend</th><th>Round Robin</th><th>Q-Learning</th><th>EMA</th><th>QL &minus; RR</th>
+                      </tr></thead>
+                      <tbody>${rows}</tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </section>`;
+        }
+
+        function buildThreshold(hf) {
+            const box = document.getElementById('thresh-box');
+            const cv = document.getElementById('thresh-canvas');
+            const spec = {
+                x: hf.table.map(r => r.spread),
+                xTitle: 'latency spread between backends',
+                yMax: 100,
+                fmtY: v => Math.round(v) + '%',
+                fmtTip: v => v + '%',
+                height: 250,
+                series: [
+                    { label: 'Round Robin', token: '--s-rr', data: hf.table.map(r => r.round_robin_goodput) },
+                    { label: 'Q-Learning', token: '--s-ql', data: hf.table.map(r => r.q_learning_goodput) },
+                    { label: 'EMA', token: '--s-ema', data: hf.table.map(r => r.ema_goodput) },
+                ],
+            };
+            const draw = () => drawLineChart(cv, spec);
+            draw();
+            attachHover(box, cv);
+            registry.push(draw);
+        }
+
+        /* ---------------- scenarios ---------------- */
+        const SCENARIO_TAG = { factory: 'Shop floor', clinic: 'Primary health centre', retail: 'Five-outlet chain' };
+
+        function scenarioHTML(sc, agg, idx) {
+            const cfg = sc.sim_config;
+            const anchor = sc.economic_anchor;
+            const anchorBig = anchor.value_usd_per_hour
+                ? `$${fmtInt(anchor.value_usd_per_hour)}<span style="font-size:.5em;font-family:var(--mono);letter-spacing:0;color:var(--ink-3)"> / hour</span>`
+                : '';
+
+            const best = agg ? agg.best_strategy : null;
+            const tiles = STRATS.map(s => `
+              <div class="tile ${best === s.key ? 'win' : ''}" data-tile="${sc.id}:${s.key}">
+                <div class="tile-name"><i style="background:var(${s.token})"></i>${s.label}</div>
+                <div class="tile-val" data-goodput>&mdash;</div>
+                <div class="tile-sub"><span data-served>0</span> served &middot; <span data-failed>0</span> unanswered</div>
+                ${best === s.key ? '<span class="tile-flag">Best here</span>' : ''}
+              </div>`).join('');
+
+            const distRows = STRATS.map(s => `
+              <div class="dist-row">
+                <div class="dist-name">${s.short}</div>
+                <div class="dist-track" data-dist="${sc.id}:${s.key}"></div>
+              </div>`).join('');
+
+            const backendKey = cfg.backend_names.map((nm, i) => `
+              <span><i data-bkey="${i}" style="background:${backendColor(i)}"></i>${esc(nm)}</span>`).join('');
+
+            const verdictClass = (best && best !== 'q_learning') ? 'verdict upset' : 'verdict';
+            const verdictBody = agg
+                ? (agg.honest_note
+                    ? esc(agg.honest_note) + ' ' + `Q-learning trails Round Robin by ${Math.abs(agg.ql_vs_rr_goodput_pts)} points and EMA by ${Math.abs(agg.ql_vs_ema_goodput_pts)} here. The cause is diagnosed below, not explained away.`
+                    : `Q-learning answers ${agg.strategies.q_learning.goodput_pct}% of offered requests against Round Robin's ${agg.strategies.round_robin.goodput_pct}% &mdash; ${agg.ql_vs_rr_goodput_pts > 0 ? '+' : ''}${agg.ql_vs_rr_goodput_pts} points, worst seed ${agg.strategies.q_learning.goodput_worst_pct}%.`)
+                : '';
+
+            const powerStrip = sc.id === 'clinic' ? powerStripHTML() : '';
+
+            const eventList = cfg.events.map(e =>
+                `<li><span class="num">t+${(e.at_tick * TICK_MS / 1000).toFixed(1)}s</span> &mdash; ${esc(e.label)}</li>`
+            ).join('');
+
+            return `
+            <section class="block">
+              <div class="scenario">
+                <div class="narr">
+                  <span class="tag">Scenario &middot; ${esc(SCENARIO_TAG[sc.id] || '')}</span>
+                  <h2>${esc(sc.name)}</h2>
+                  <p class="tagline">${esc(sc.tagline)}</p>
+
+                  <div><span class="sub">The deployment</span><p>${esc(sc.setting)}</p></div>
+                  <div><span class="sub">What goes wrong</span><p>${esc(sc.problem)}</p></div>
+                  <div><span class="sub">Why a microcontroller, not a Pi</span><p>${esc(sc.why_esp32)}</p></div>
+
+                  <div class="watch"><span class="sub">Watch for</span><p>${esc(sc.what_to_watch)}</p></div>
+
+                  ${anchorBig ? `<div class="anchor">
+                    <span class="tag">${esc(anchor.metric)}</span>
+                    <div class="big">${anchorBig}</div>
+                    <p>${esc(anchor.framing)}</p>
+                  </div>` : `<div class="anchor">
+                    <span class="tag">${esc(anchor.metric)}</span>
+                    <p style="margin-top:2px">${esc(anchor.framing)}</p>
+                  </div>`}
+
+                  ${powerStrip}
+
+                  <div>
+                    <span class="sub">Event timeline</span>
+                    <ul style="margin:6px 0 0;padding-left:18px;font-size:.9rem;color:var(--ink-2)">${eventList}</ul>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="panel" data-panel="${sc.id}">
+                    <div class="panel-bar">
+                      <span class="clock">
+                        <span data-clock>0.0</span>s / ${(cfg.duration_ticks * TICK_MS / 1000).toFixed(1)}s
+                        
+                      </span>
+                      <div style="display:flex;gap:8px;align-items:center">
+                        <span class="tag" style="text-transform:none">seed
+                          <input type="number" id="seed-${sc.id}" value="12345"
+                            style="width:74px;font-family:var(--mono);font-size:.72rem;background:var(--surface);
+                                   color:var(--ink);border:1px solid var(--rule-strong);border-radius:2px;padding:3px 5px">
+                        </span>
+                        <button class="btn btn--go" type="button" data-run>Replay run</button>
+                      </div>
+                    </div>
+
+                    <div class="tiles">${tiles}</div>
+
+                    <div class="panel-body">
+                      <div class="chart-label">
+                        <span class="tag">Response time through the run</span>
+                        <span class="chart-note">ms, mean per 1.0 s window</span>
+                      </div>
+                      <div class="chartbox" data-latbox><canvas data-latency></canvas></div>
+
+                      <div class="chart-label">
+                        <span class="tag">Where the traffic actually went</span>
+                        <span class="chart-note">share of dispatched requests</span>
+                      </div>
+                      <div class="dist">${distRows}</div>
+                      <div class="dist-key">${backendKey}</div>
+
+                      <div class="${verdictClass}">
+                        <span class="tag">Verdict &middot; mean of ${agg ? agg.seeds : 8} seeds</span>
+                        <p>${verdictBody}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  ${aggTableHTML(agg, cfg)}
+                </div>
+              </div>
+            </section>`;
+        }
+
+        function backendColor(i) {
+            // Backends are a second categorical dimension and must not borrow the
+            // strategy hues, or the two legends would collide.
+            return css(['--b1', '--b2', '--b3'][i % 3]);
+        }
+
+        function backendInk(i) {
+            // Each ramp step carries its own label, so the label colour has to
+            // follow the step it sits on, not the theme in general.
+            return css(['--dist-ink-1', '--dist-ink-2', '--dist-ink-3'][i % 3]);
+        }
+
+        function aggTableHTML(agg, cfg) {
+            if (!agg) return '';
+            const rows = STRATS.map(s => {
+                const r = agg.strategies[s.key];
+                if (!r) return '';
+                return `<tr>
+                  <td><i class="cell-dot" style="background:var(${s.token})"></i>${s.label}</td>
+                  <td class="num">${r.goodput_pct}%</td>
+                  <td class="num">${r.goodput_worst_pct}%</td>
+                  <td class="num">${r.mean_latency_ms}</td>
+                  <td class="num">${r.p95_latency_ms}</td>
+                  <td class="num">${Math.round(r.rejected)}</td>
+                </tr>`;
+            }).join('');
+            return `
+              <div class="tablewrap">
+                <table>
+                  <thead><tr>
+                    <th>Strategy (8-seed mean)</th><th>Goodput</th><th>Worst seed</th>
+                    <th>Mean ms</th><th>p95 ms</th><th>Refused</th>
+                  </tr></thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>`;
+        }
+
+        function powerStripHTML() {
+            const devs = DATA.hardware_comparison.devices.filter(d => d.id !== 'cloud_lb');
+            const KWH_COST = 0.09; // USD per kWh, indicative
+            return `<div>
+              <span class="sub">Gateway power budget, 24/7 duty</span>
+              <div class="powerstrip">
+                ${devs.map(d => {
+                const kwh = (d.load_power_w * 24 * 365) / 1000;
+                return `<div class="${d.id === 'esp32' ? 'lead' : ''}">
+                    <div class="dev">${esc(d.name.split('(')[0].trim())}</div>
+                    <div class="w">${d.load_power_w} W</div>
+                    <div class="kwh">${kwh.toFixed(1)} kWh/yr &middot; $${(kwh * KWH_COST).toFixed(2)}/yr</div>
+                  </div>`;
+            }).join('')}
+              </div>
+              <p style="font-size:.78rem;color:var(--ink-3);margin-top:8px;font-family:var(--mono)">
+                Pi figures from Geerling's Pi Dramble power benchmarks. ESP32 figure pending our own inline-meter
+                measurement. Energy priced at $0.09/kWh.
+              </p>
+            </div>`;
+        }
+
+        /* ---------------- run the simulations ---------------- */
+        const runners = {};
+
+        function buildScenario(sc, agg) {
+            const panel = document.querySelector(`[data-panel="${sc.id}"]`);
+            const cfg = sc.sim_config;
+            const latBox = panel.querySelector('[data-latbox]');
+            const latCv = panel.querySelector('[data-latency]');
+            const clockEl = panel.querySelector('[data-clock]');
+            const seedInput = panel.querySelector(`#seed-${sc.id}`);
+            const runBtn = panel.querySelector('[data-run]');
+
+            // sim-engine records a window at every tick divisible by WINDOW, so
+            // history[0] is the sample at tick 0 and is always null. The first
+            // real point is history[1], covering elapsed 0 -> 1.0 s. Charting
+            // history.length - 1 points keeps label and value on the same window.
+            const nPoints = Math.floor(cfg.duration_ticks / WINDOW) - 1;
+            const xLabels = Array.from({ length: nPoints }, (_, i) =>
+                (((i + 1) * WINDOW * TICK_MS) / 1000).toFixed(1) + 's');
+
+            // WAN-down window becomes a shaded band, in point-index space
+            const bands = [];
+            const down = cfg.events.find(e => e.type === 'wan_down');
+            if (down) {
+                const up = cfg.events.find(e => e.type === 'wan_up');
+                bands.push({
+                    from: down.at_tick / WINDOW - 1,
+                    to: (up ? up.at_tick : cfg.duration_ticks) / WINDOW - 1,
+                    label: 'CLOUD POS UNREACHABLE',
+                });
+            }
+            const marks = cfg.events
+                .filter(e => e.type === 'degrade' || e.type === 'recover')
+                .map(e => ({ at: e.at_tick / WINDOW - 1 }));
+
+            const spec = {
+                x: xLabels,
+                xTitle: 'elapsed (simulated)',
+                fmtY: v => Math.round(v),
+                fmtTip: v => v + ' ms',
+                height: 240,
+                bands, marks,
+                series: STRATS.map(s => ({ label: s.label, token: s.token, data: new Array(nPoints).fill(null) })),
+            };
+
+            const state = { sims: null, spec };
+            runners[sc.id] = state;
+
+            function paint() { drawLineChart(latCv, spec); }
+            registry.push(paint);
+            attachHover(latBox, latCv);
+
+            function setTiles(summaries) {
+                STRATS.forEach(s => {
+                    const tile = panel.querySelector(`[data-tile="${sc.id}:${s.key}"]`);
+                    const r = summaries[s.key];
+                    tile.querySelector('[data-goodput]').textContent = r.goodputPct.toFixed(1) + '%';
+                    tile.querySelector('[data-served]').textContent = r.completed;
+                    tile.querySelector('[data-failed]').textContent = r.failed;
+                });
+            }
+
+            function setDist(summaries) {
+                STRATS.forEach(s => {
+                    const track = panel.querySelector(`[data-dist="${sc.id}:${s.key}"]`);
+                    const d = summaries[s.key].distribution;
+                    const total = d.reduce((a, b) => a + b.requests, 0) || 1;
+                    track.innerHTML = d.map((b, i) => {
+                        const pct = (b.requests / total) * 100;
+                        return `<div class="dist-seg" style="flex:0 0 ${pct.toFixed(1)}%;background:${backendColor(i)};color:${backendInk(i)}"
+                                     title="${esc(b.name)}: ${b.requests} requests">${pct >= 12 ? pct.toFixed(0) + '%' : ''}</div>`;
+                    }).join('');
+                });
+            }
+
+            function reset(seed) {
+                state.sims = Object.fromEntries(STRATS.map(s => [s.key, new Simulation(cfg, s.key, seed)]));
+                spec.series.forEach(ser => ser.data.fill(null));
+            }
+
+            function sampleInto(i) {
+                STRATS.forEach((s, si) => {
+                    const h = state.sims[s.key].history.avgLatency;
+                    spec.series[si].data[i] = i + 1 < h.length ? h[i + 1] : null;
+                });
+            }
+
+            function summaries() {
+                return Object.fromEntries(STRATS.map(s => [s.key, state.sims[s.key].summary()]));
+            }
+
+            // Settle instantly on load: the page opens showing a finished run,
+            // not an empty shell waiting for a click.
+            function runInstant(seed) {
+                reset(seed);
+                for (const s of STRATS) {
+                    const sim = state.sims[s.key];
+                    while (sim.tick < cfg.duration_ticks) sim.step();
+                }
+                for (let i = 0; i < nPoints; i++) sampleInto(i);
+                const sum = summaries();
+                setTiles(sum); setDist(sum);
+                clockEl.textContent = (cfg.duration_ticks * TICK_MS / 1000).toFixed(1);
+                paint();
+            }
+
+            const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            let raf = null;
+
+            function replay(seed) {
+                if (reduced) { runInstant(seed); return; }
+                if (raf) cancelAnimationFrame(raf);
+                reset(seed);
+                paint();
+                runBtn.disabled = true;
+                runBtn.textContent = 'Running';
+                let tick = 0;
+                const TICKS_PER_FRAME = 2;
+                const loop = () => {
+                    for (let k = 0; k < TICKS_PER_FRAME && tick < cfg.duration_ticks; k++) {
+                        for (const s of STRATS) state.sims[s.key].step();
+                        tick++;
+                    }
+                    const filled = Math.min(nPoints, Math.floor(tick / WINDOW));
+                    for (let i = 0; i < filled; i++) sampleInto(i);
+                    clockEl.textContent = (tick * TICK_MS / 1000).toFixed(1);
+                    const sum = summaries();
+                    setTiles(sum); setDist(sum);
+                    paint();
+                    if (tick < cfg.duration_ticks) {
+                        raf = requestAnimationFrame(loop);
+                    } else {
+                        runBtn.disabled = false;
+                        runBtn.textContent = 'Replay run';
+                        raf = null;
+                    }
+                };
+                raf = requestAnimationFrame(loop);
+            }
+
+            runBtn.addEventListener('click', () => {
+                const seed = parseInt(seedInput.value, 10);
+                replay(Number.isFinite(seed) ? seed : 12345);
+            });
+
+            runInstant(12345);
+        }
+
+        /* ---------------- weakness ---------------- */
+        function weaknessHTML(w) {
+            return `
+            <section class="block">
+              <span class="tag">Where this breaks</span>
+              <h2>${esc(w.title)}</h2>
+              <div class="weak">
+                <h3>${esc(w.finding)}</h3>
+                <p class="prose"><strong style="color:var(--ink)">Root cause.</strong> ${esc(w.root_cause)}</p>
+                <p class="prose"><strong style="color:var(--ink)">What we measured about the fix.</strong> ${esc(w.evidence)}</p>
+                <p class="prose"><strong style="color:var(--ink)">Why it is on this page.</strong> ${esc(w.we_did_not_hide_this)}</p>
+                <span class="sub" style="display:block;margin-top:16px;font-family:var(--mono);font-size:.66rem;
+                      letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)">Future work</span>
+                <ul>${w.future_work.map(f => `<li>${esc(f)}</li>`).join('')}</ul>
+                <p style="font-size:.78rem;color:var(--ink-3);margin-top:14px;font-family:var(--mono)">
+                  Reproduce: <code>${esc(w.reproduce)}</code>
+                </p>
+              </div>
+            </section>`;
+        }
+
+        /* ---------------- sources ---------------- */
+        function sourcesHTML() {
+            const ev = DATA.external_evidence;
+            const items = [];
+            const push = (title, detail, source, url, status) => items.push({ title, detail, source, url, status });
+
+            (ev.outages || []).forEach(o => push(o.title + ' (' + o.date + ')', o.scale, o.source, o.source_url, o.status));
+            (ev.downtime_costs || []).forEach(d => push(d.metric, d.detail || '', d.source, d.source_url, d.status));
+            (ev.academic || []).forEach(a => push(a.claim, a.figures || '', a.source, a.source_url, a.status));
+            (ev.hardware_specs || []).forEach(h => push(h.claim || h.metric || 'Hardware spec', h.figures || h.detail || '', h.source, h.source_url, h.status));
+            DATA.hardware_comparison.devices.forEach(d => {
+                if (d.power_source) push(d.name + ' power draw', d.power_source, d.cost_source ? 'Cost: ' + d.cost_source : '', d.power_source_url, d.power_status);
+            });
+
+            return `
+            <section class="block" style="border-bottom:0">
+              <span class="tag">Provenance</span>
+              <h2>Every number on this page is either cited or measured.</h2>
+              <p class="prose" style="margin-top:12px">Figures carry a status: <em>cited</em> comes from the source
+              named beside it, <em>modelled</em> is derived from published specifications, and
+              <em>pending measurement</em> is a placeholder waiting on our own hardware run. Simulation results are
+              produced by <code style="font-family:var(--mono);font-size:.85em">ui/static/sim-engine.js</code> and are
+              labelled as simulated wherever they appear.</p>
+              <div class="sources">
+                ${items.map(i => `
+                  <div class="src">
+                    <b>${esc(i.title)}${i.status ? `<span class="status-pill">${esc(i.status.replace(/_/g, ' '))}</span>` : ''}</b>
+                    ${i.detail ? esc(i.detail) + '<br>' : ''}
+                    ${i.source ? '<em>' + esc(i.source) + '</em><br>' : ''}
+                    ${i.url ? `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.url)}</a>` : ''}
+                  </div>`).join('')}
+              </div>
+            </section>`;
+        }
+
+        /* ---------------- theme ---------------- */
+        (function themeInit() {
+            const stored = localStorage.getItem('color-theme');
+            if (stored === 'dark' || stored === 'light') {
+                document.documentElement.setAttribute('data-theme', stored);
+            }
+            document.getElementById('theme-toggle').addEventListener('click', () => {
+                const cur = document.documentElement.getAttribute('data-theme')
+                    || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                const next = cur === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('color-theme', next);
+                redrawAll();
+                // distribution bars read tokens at build time, so repaint them too
+                document.querySelectorAll('[data-dist]').forEach(t => {
+                    [...t.children].forEach((seg, i) => {
+                        seg.style.background = backendColor(i);
+                        seg.style.color = backendInk(i);
+                    });
+                });
+                document.querySelectorAll('[data-bkey]').forEach(el => {
+                    el.style.background = backendColor(parseInt(el.dataset.bkey, 10));
+                });
+            });
+        })();
+
+        boot();
+    </script>
+</body>
+
+</html>
