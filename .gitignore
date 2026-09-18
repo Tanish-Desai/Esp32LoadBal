@@ -1,3 +1,4 @@
 proj.code-workspace
 __pycache__/
-*.py[cod]presentation/~$*
+*.py[cod]
+.vscode
