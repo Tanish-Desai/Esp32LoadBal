@@ -1,3 +1,4 @@
+import json
 import sys
 import os
 import time
@@ -82,6 +83,39 @@ def client_event_callback(data):
 @app.route('/')
 def index():
     return render_template('index.html', laptop_ip=get_local_ip())
+
+
+# --- Scenario simulations ---
+# These are self-contained: the simulation runs in the browser against a JS port
+# of the firmware algorithms, so the page works with no ESP32 attached and no
+# backends running. That matters for a live demo - nothing to go wrong on stage.
+
+DATA_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'project_data.json'))
+
+
+def load_project_data():
+    with open(DATA_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+@app.route('/scenarios')
+def scenarios():
+    return render_template('scenarios.html')
+
+
+@app.route('/api/project-data', methods=['GET'])
+def project_data():
+    """Serve the single source of truth to the front end.
+
+    Read from disk per request rather than cached at import, so re-running the
+    benchmark harness shows up on refresh without restarting Flask.
+    """
+    try:
+        return jsonify(load_project_data())
+    except FileNotFoundError:
+        return jsonify({'error': f'data file not found at {DATA_FILE}'}), 500
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'data file is not valid JSON: {e}'}), 500
 
 # --- Server APIs ---
 

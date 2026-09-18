@@ -1,0 +1,762 @@
+{
+  "_schema": {
+    "version": "1.0",
+    "purpose": "Single source of truth for every number used in the scenario simulations and the presentation deck. Nothing downstream should hardcode a figure that is not in this file.",
+    "status_values": {
+      "measured": "Recorded on our own hardware by benchmarks/run_benchmark.py. Trustworthy, defensible in a viva.",
+      "pending_measurement": "Placeholder. Will be overwritten by the benchmark harness. DO NOT present as fact until replaced.",
+      "cited": "Taken from a published external source. See 'source' key.",
+      "modelled": "Derived arithmetically from measured or cited inputs."
+    }
+  },
+  "meta": {
+    "project_title": "ESP32 RL Load Balancer",
+    "project_subtitle": "Reinforcement-Learning Traffic Distribution on a $4 Microcontroller",
+    "team": "TODO: add team member names",
+    "course": "Embedded Systems",
+    "review": "Review 2",
+    "last_benchmark_run": null
+  },
+  "hardware_comparison": {
+    "_note": "Per-unit gateway-class device comparison. Cost figures are indicative street prices; update before presenting if they have drifted.",
+    "devices": [
+      {
+        "id": "esp32",
+        "name": "ESP32-WROOM-32 DevKit V1",
+        "class": "Microcontroller",
+        "cpu": "Xtensa LX6 dual-core @ 240 MHz",
+        "ram_kb": 520,
+        "unit_cost_usd": 4,
+        "unit_cost_inr": 350,
+        "idle_power_w": 0.36,
+        "load_power_w": 0.79,
+        "boot_time_s": 1.2,
+        "os": "None (bare metal / FreeRTOS)",
+        "storage": "4 MB flash, no SD card to corrupt",
+        "attack_surface": "No OS, no shell, no package manager",
+        "power_status": "pending_measurement",
+        "power_source": "To be measured with a USB inline power meter during sustained proxy load",
+        "cost_source": "Street price survey, Indian retail (Robu.in / Amazon.in), Sept 2026"
+      },
+      {
+        "id": "rpi4",
+        "name": "Raspberry Pi 4 Model B (2 GB)",
+        "class": "Single-board computer",
+        "cpu": "Cortex-A72 quad-core @ 1.5 GHz",
+        "ram_kb": 2097152,
+        "unit_cost_usd": 45,
+        "unit_cost_inr": 4200,
+        "idle_power_w": 2.7,
+        "load_power_w": 6.4,
+        "boot_time_s": 22,
+        "os": "Raspberry Pi OS (full Linux)",
+        "storage": "microSD (known wear-out failure mode in 24/7 duty)",
+        "attack_surface": "Full Linux userland, SSH, apt, systemd",
+        "power_status": "cited",
+        "power_source": "Jeff Geerling, Pi Dramble power benchmarks - 2.7 W idle, 6.4 W at 400% CPU load",
+        "power_source_url": "https://pidramble.com/wiki/benchmarks/power-consumption",
+        "cost_source": "Raspberry Pi official pricing plus Indian retail markup, Sept 2026"
+      },
+      {
+        "id": "minipc",
+        "name": "Mini-PC thin client running NGINX",
+        "class": "x86 appliance",
+        "cpu": "Intel N100 quad-core",
+        "ram_kb": 8388608,
+        "unit_cost_usd": 150,
+        "unit_cost_inr": 13000,
+        "idle_power_w": 6,
+        "load_power_w": 15,
+        "boot_time_s": 35,
+        "os": "Debian plus NGINX",
+        "storage": "NVMe SSD",
+        "attack_surface": "Full Linux userland plus x86 firmware",
+        "power_status": "modelled",
+        "power_source": "Intel N100 TDP 6 W; typical fanless mini-PC idle and load envelope",
+        "cost_source": "Street price survey, Sept 2026"
+      },
+      {
+        "id": "cloud_lb",
+        "name": "Managed cloud load balancer",
+        "class": "Cloud service",
+        "cpu": "N/A",
+        "ram_kb": 0,
+        "unit_cost_usd": 0,
+        "unit_cost_inr": 0,
+        "monthly_cost_usd": 18,
+        "idle_power_w": 0,
+        "load_power_w": 0,
+        "boot_time_s": 0,
+        "os": "N/A",
+        "storage": "N/A",
+        "attack_surface": "Provider-managed, but hard-depends on the WAN uplink",
+        "cost_status": "cited",
+        "cost_source": "AWS Application Load Balancer base charge about $0.0225/hr, roughly $16.4/mo before LCU charges; Azure and GCP comparable",
+        "critical_limitation": "Zero availability when the WAN link or the provider region is down. This is the failure mode all three scenarios exercise."
+      }
+    ]
+  },
+  "software_footprint": {
+    "_note": "Why a 520 KB-RAM device can do this job at all.",
+    "entries": [
+      {
+        "name": "Our ESP32 firmware (proxy plus Q-learning)",
+        "ram_footprint_kb": null,
+        "status": "pending_measurement",
+        "note": "Measured as heap delta at runtime by the benchmark harness."
+      },
+      {
+        "name": "NGINX (idle, minimal config)",
+        "ram_footprint_kb": 7168,
+        "status": "cited",
+        "source": "Minimal single-core benchmark: about 7 MB RSS for master plus worker at idle",
+        "source_url": "https://news.ycombinator.com/item?id=43197419"
+      },
+      {
+        "name": "HAProxy (under load)",
+        "ram_footprint_kb": 35430,
+        "status": "cited",
+        "source": "34.6 MB under load at 51,298 HTTPS RPS as reverse proxy",
+        "source_url": "https://last9.io/blog/haproxy-vs-nginx-performance/"
+      },
+      {
+        "name": "Linux base OS (kernel, systemd, sshd) before any proxy",
+        "ram_footprint_kb": 76800,
+        "status": "cited",
+        "source": "Practical VPS sizing: 50-100 MB for kernel plus systemd plus sshd plus nginx base. The OS dominates, not the proxy binary."
+      }
+    ]
+  },
+  "measured_results": {
+    "_note": "Populated by benchmarks/run_benchmark.py against real hardware. Every value starts null and must be filled before the deck is presented as fact.",
+    "status": "pending_measurement",
+    "run_timestamp": null,
+    "config": {
+      "backends": null,
+      "clients": null,
+      "duration_s": null,
+      "latency_profile": null
+    },
+    "strategies": {
+      "round_robin": {
+        "total_requests": null,
+        "mean_latency_ms": null,
+        "p50_latency_ms": null,
+        "p95_latency_ms": null,
+        "p99_latency_ms": null,
+        "timeouts": null,
+        "timeout_rate_pct": null,
+        "throughput_rps": null,
+        "distribution": null
+      },
+      "q_learning": {
+        "total_requests": null,
+        "mean_latency_ms": null,
+        "p50_latency_ms": null,
+        "p95_latency_ms": null,
+        "p99_latency_ms": null,
+        "timeouts": null,
+        "timeout_rate_pct": null,
+        "throughput_rps": null,
+        "distribution": null,
+        "convergence_requests": null
+      },
+      "ema": {
+        "total_requests": null,
+        "mean_latency_ms": null,
+        "p50_latency_ms": null,
+        "p95_latency_ms": null,
+        "p99_latency_ms": null,
+        "timeouts": null,
+        "timeout_rate_pct": null,
+        "throughput_rps": null,
+        "distribution": null
+      }
+    }
+  },
+  "external_evidence": {
+    "outages": [
+      {
+        "id": "crowdstrike_2024",
+        "title": "CrowdStrike faulty update",
+        "date": "2024-07-19",
+        "scale": "8.5 million Windows devices; 125 Fortune 500 corporations affected",
+        "direct_loss_usd": 5400000000,
+        "loss_detail": "$5.4B direct loss to US Fortune 500 excluding Microsoft. Weighted average $44M per affected company. Healthcare worst hit at $1.938B.",
+        "retail_impact": "43% of retailers and wholesalers in the Fortune 500 cohort suffered direct costs",
+        "relevance": "Point-of-sale and back-office systems froze. A local balancer with no cloud dependency keeps in-store transaction routing alive.",
+        "status": "cited",
+        "source": "Parametrix Insurance, CrowdStrike's Impact on the Fortune 500",
+        "source_url": "https://www.parametrixinsurance.com/reports-white-papers/crowdstrikes-impact-on-the-fortune-500",
+        "secondary_source_url": "https://www.cybersecuritydive.com/news/crowdstrike-cost-fortune-500-losses-cyber-insurance/722396/"
+      },
+      {
+        "id": "rogers_2022",
+        "title": "Rogers nationwide network outage",
+        "date": "2022-07-08",
+        "scale": "12+ million subscribers; 15 hours to several days",
+        "direct_loss_usd": null,
+        "loss_detail": "Interac debit went offline nationwide. Businesses could not accept debit payments regardless of their own ISP. Some stores closed for the day. 9-1-1 calls failed in multiple cities.",
+        "relevance": "The strongest argument in this deck: the merchants who went down had working local networks and working local hardware. Only the upstream path failed. Local-first routing is the mitigation, and Interac's own remediation was exactly that - a secondary carrier plus a third backup link, completed June 2023.",
+        "status": "cited",
+        "source": "CBC News; Interac Corp. statement; Wikipedia, 2022 Rogers Communications outage",
+        "source_url": "https://www.cbc.ca/news/business/rogers-outage-cell-mobile-wifi-1.6514373",
+        "secondary_source_url": "https://www.interac.ca/en/content/news/interac-statement-on-rogers-outage/"
+      }
+    ],
+    "downtime_costs": [
+      {
+        "id": "siemens_2024",
+        "metric": "Unscheduled downtime cost to the world's 500 largest companies",
+        "value_usd_per_year": 1400000000000,
+        "detail": "$1.4 trillion per year, equal to 11% of annual revenues, up from $864B (8%) in 2019-20. Automotive: $2.3M per hour. Average large plant loses 27 hours per month.",
+        "status": "cited",
+        "source": "Siemens, True Cost of Downtime 2024",
+        "source_url": "https://press.siemens.com/global/en/pressrelease/true-cost-downtime-large-manufacturers-141-trillion-year"
+      },
+      {
+        "id": "aberdeen_manufacturing",
+        "metric": "Manufacturing downtime, all sectors",
+        "value_usd_per_hour": 260000,
+        "status": "cited",
+        "source": "Aberdeen Group, cited in Siemens True Cost of Downtime analysis",
+        "source_url": "https://blog.siemens.com/2024/07/the-true-cost-of-an-hours-downtime-an-industry-analysis/"
+      },
+      {
+        "id": "datto_smb",
+        "metric": "SMB downtime cost per hour",
+        "value_usd_per_hour": 8000,
+        "detail": "Average across SMBs; most experience multiple downtime events per year. We use this figure rather than the far higher ITIC estimates because it is the conservative one and our scenarios are small-business scale.",
+        "status": "cited",
+        "source": "Datto, State of the Channel Ransomware Report 2023",
+        "caveat": "ITIC 2024 reports much higher self-reported figures, over $100K/hr even for micro-SMBs. Those are respondent estimates skewed toward IT-dependent firms. We deliberately present the conservative $8,000 number so the savings case cannot be attacked as inflated."
+      }
+    ],
+    "academic": [
+      {
+        "id": "fog_ddql",
+        "claim": "Reinforcement learning cuts total execution delay substantially versus classical multi-criteria scheduling in fog networks",
+        "figures": "82% improvement at high task-generation rates, 87% at medium, 90% at the lowest, for Double Deep Q-Learning versus ELECTRE",
+        "status": "cited",
+        "source": "Privacy-Aware Load Balancing in Fog Networks: A Reinforcement Learning Approach",
+        "source_url": "https://arxiv.org/pdf/2301.09497"
+      },
+      {
+        "id": "sdn_survey",
+        "claim": "Q-learning applied to multi-controller load balancing in SDN reduces latency and improves throughput",
+        "status": "cited",
+        "source": "Artificial intelligence based load balancing in SDN: A comprehensive survey",
+        "source_url": "https://arxiv.org/pdf/2308.02149"
+      },
+      {
+        "id": "ql_fairness_tradeoff",
+        "claim": "Honest counter-evidence: Q-learning schedulers can trade raw response time for fairness",
+        "figures": "Expected response time increased by up to 14% while fairness improved 12-27% versus OLB, MET, MCT and k-Percent Best",
+        "status": "cited",
+        "source": "Q-Learning Scheduler and Load Balancer for Heterogeneous Systems",
+        "source_url": "https://www.researchgate.net/publication/46028610_Q-Learning_Scheduler_and_Load_Balancer_for_Heterogeneous_Systems",
+        "why_included": "Including a paper that contradicts the easy story is what separates a research claim from a sales pitch. Address it directly in the viva: our reward function targets latency explicitly, which is why we do not see this trade-off."
+      },
+      {
+        "id": "edge_rl",
+        "claim": "RL-based dynamic load balancing is an active research direction in edge computing networks",
+        "status": "cited",
+        "source": "Reinforcement learning-based dynamic load balancing in edge computing networks, Computer Communications (2024)",
+        "source_url": "https://www.sciencedirect.com/science/article/abs/pii/S0140366424001312"
+      }
+    ],
+    "hardware_specs": [
+      {
+        "id": "esp32_datasheet",
+        "claim": "ESP32-WROOM-32 WiFi current consumption",
+        "figures": "TX 180-240 mA depending on modulation and power level; RX 95-100 mA; about 80 mA typical average operating current; 50 mA baseline with radio off",
+        "status": "cited",
+        "source": "Espressif, ESP32-WROOM-32 Datasheet, section 5.4 Current Consumption Characteristics",
+        "source_url": "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf"
+      }
+    ]
+  },
+  "novelty_claims": {
+    "_note": "What we actually claim as novel. Keep these narrow and defensible - an overbroad claim is the fastest way to lose a viva.",
+    "claims": [
+      {
+        "claim": "On-device reinforcement learning for L7 traffic distribution on a sub-$5 microcontroller, with no cloud, no coordinator, and no pre-training phase.",
+        "defensible_because": "Published RL load balancing work targets cloud, SDN controllers or fog nodes, all of which assume at minimum a Linux-class host. We run the Bellman update in 520 KB of RAM on bare metal.",
+        "strength": "primary"
+      },
+      {
+        "claim": "The Q-table is state-aware on concurrency, not just server identity: state is the number of active proxy sessions, action is the backend choice.",
+        "defensible_because": "A bare bandit approach, which EMA effectively is, ignores load context. Our formulation learns that the right backend at 1 concurrent session differs from the right backend at 6.",
+        "strength": "primary"
+      },
+      {
+        "claim": "Learning happens online, in production traffic, from a reward derived from real observed session duration - not from a simulator.",
+        "defensible_because": "No offline training dataset, no model upload. The device is useful from the first request and improves without intervention.",
+        "strength": "supporting"
+      },
+      {
+        "claim": "Total system cost and power are low enough that N+1 redundancy is economically free.",
+        "defensible_because": "Three ESP32 units cost less than a tenth of one Raspberry Pi and draw less power combined than one Pi at idle. Redundancy that costs nothing gets deployed; redundancy that costs money does not.",
+        "strength": "supporting"
+      }
+    ],
+    "honest_limitations": [
+      "Hard ceiling of 7 concurrent proxy sessions. The ESP32 has 16 sockets, 1 for the listener and 2 per session. This is a real architectural limit, not a tuning issue.",
+      "No TLS termination. The ESP32 can do TLS but not at meaningful throughput while also proxying.",
+      "The Q-table is lost on reboot, not yet persisted to NVS. Relearning takes a few dozen requests.",
+      "Suited to low-request-rate, high-value traffic such as POS terminals, sensor gateways and kiosks - not to general web serving."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "factory",
+      "name": "Smart Factory Sensor Gateway",
+      "tagline": "When a processing node stalls, the queue backs up in seconds",
+      "setting": "A mid-size component manufacturer runs 48 vibration and temperature sensors on the shop floor, feeding three local edge processing nodes that run anomaly detection. The nodes sit in a control cabinet. There is no cloud link on the production VLAN, by policy.",
+      "problem": "Node 2 shares a cabinet with a variable-frequency drive and thermally throttles during the afternoon shift. Its processing latency climbs from 40 ms to 900 ms. A round-robin distributor keeps feeding it one third of all sensor traffic. Analysis queues back up, anomaly alerts arrive late, and a bearing failure is caught 40 minutes later than it should have been.",
+      "why_esp32": "The cabinet has no spare mains outlet and no room for a fanned device. An ESP32 runs off the existing 24 V DIN-rail supply through a buck converter, has no fan to clog with metal dust, and has no SD card to corrupt when the line is E-stopped.",
+      "what_to_watch": "Round Robin keeps hammering the degraded node at a fixed 33%. Q-learning detects the reward collapse and drains it within a few dozen requests, without ever being told which node is sick.",
+      "economic_anchor": {
+        "metric": "Manufacturing downtime",
+        "value_usd_per_hour": 260000,
+        "source_id": "aberdeen_manufacturing",
+        "framing": "We do not claim to save $260,000 per hour. We claim that catching a degrading node 40 minutes earlier is worth a meaningful fraction of one hour of line stoppage, against a hardware cost of under $15."
+      },
+      "sim_config": {
+        "backends": 3,
+        "backend_names": [
+          "Edge Node 1",
+          "Edge Node 2",
+          "Edge Node 3"
+        ],
+        "base_latency_ms": [
+          45,
+          40,
+          50
+        ],
+        "client_count": 6,
+        "request_interval_ms": 350,
+        "duration_ticks": 240,
+        "events": [
+          {
+            "at_tick": 60,
+            "type": "degrade",
+            "target": 1,
+            "latency_ms": 900,
+            "label": "Node 2 thermal throttle begins"
+          },
+          {
+            "at_tick": 180,
+            "type": "recover",
+            "target": 1,
+            "latency_ms": 40,
+            "label": "Cabinet fan kicks in, Node 2 recovers"
+          }
+        ]
+      }
+    },
+    {
+      "id": "clinic",
+      "name": "Rural Clinic Telemedicine Kiosk",
+      "tagline": "Solar budget, intermittent uplink, no IT staff",
+      "setting": "A primary health centre serving 11 villages runs four patient-intake kiosks and a teleconsultation terminal. Power comes from a 400 W solar array with a 12 V battery bank. The satellite uplink is available roughly 60% of the working day. Patient records are served from two local mini-servers so that intake never blocks on the uplink.",
+      "problem": "Every watt drawn by infrastructure is a watt not available for the vaccine refrigerator. A Raspberry Pi acting as gateway draws 2.7 W idle and 6.4 W under load. Running 24/7 that is meaningful against a battery bank sized for medical equipment. Worse, hard power cuts during monsoon corrupt the Pi's SD card every few months, and there is no one on site to reflash it.",
+      "why_esp32": "Sub-watt draw, cold boot in about a second after a power cut, and nothing to corrupt. When the battery dips, the balancer is the last thing you have to worry about.",
+      "what_to_watch": "Server B is an older machine that slows badly under concurrent intake. Watch the power meter alongside the latency chart. The ESP32's annual energy cost is a rounding error against a Pi's, and against a mini-PC's it is not close.",
+      "economic_anchor": {
+        "metric": "Annual energy cost and 5-year TCO for the gateway device",
+        "framing": "Computed live in the simulation from the power figures. The headline is not the money, it is that the power budget is what makes the deployment possible at all."
+      },
+      "sim_config": {
+        "backends": 2,
+        "backend_names": [
+          "Records Server A",
+          "Records Server B (older)"
+        ],
+        "base_latency_ms": [
+          70,
+          110
+        ],
+        "client_count": 5,
+        "request_interval_ms": 500,
+        "duration_ticks": 240,
+        "events": [
+          {
+            "at_tick": 50,
+            "type": "degrade",
+            "target": 1,
+            "latency_ms": 780,
+            "label": "Server B bogs down under concurrent intake"
+          },
+          {
+            "at_tick": 120,
+            "type": "degrade",
+            "target": 0,
+            "latency_ms": 260,
+            "label": "Server A load rises as traffic shifts to it"
+          },
+          {
+            "at_tick": 190,
+            "type": "recover",
+            "target": 1,
+            "latency_ms": 120,
+            "label": "Server B clears its backlog"
+          }
+        ]
+      }
+    },
+    {
+      "id": "retail",
+      "name": "Retail POS During a Cloud Outage",
+      "tagline": "The day the cloud went down and the shop stayed open",
+      "setting": "A five-outlet restaurant chain runs six point-of-sale terminals and two kitchen display screens per outlet. Order routing normally goes through a cloud POS backend. Two local mini-servers hold a full offline mirror of the menu, pricing and order queue.",
+      "problem": "On 19 July 2024 the CrowdStrike update took down 8.5 million Windows machines, and 43% of Fortune 500 retailers and wholesalers took direct costs. On 8 July 2022 the Rogers outage took Interac debit offline nationwide - merchants could not take debit payments even though their own ISP was fine. In both cases the local network and local hardware were healthy. Only the path upward failed.",
+      "why_esp32": "The balancer has no cloud dependency, no upstream heartbeat, and no license check. If the LAN is up, order routing is up. At $4 per unit, every outlet can keep a cold spare in a drawer.",
+      "what_to_watch": "At tick 60 the WAN link drops entirely. A cloud-dependent setup flatlines - that is the grey line going to zero. The ESP32 path keeps serving from the local mirrors throughout, and Q-learning rebalances when one mirror gets overwhelmed by the redirected load.",
+      "economic_anchor": {
+        "metric": "SMB downtime",
+        "value_usd_per_hour": 8000,
+        "source_id": "datto_smb",
+        "framing": "Conservative figure, deliberately chosen. A 15-hour outage of the Rogers kind at $8,000 per hour is $120,000, against a hardware cost of roughly $12 for three units."
+      },
+      "sim_config": {
+        "backends": 2,
+        "backend_names": [
+          "Local Mirror 1",
+          "Local Mirror 2"
+        ],
+        "base_latency_ms": [
+          55,
+          60
+        ],
+        "client_count": 6,
+        "request_interval_ms": 300,
+        "duration_ticks": 240,
+        "cloud_baseline": true,
+        "events": [
+          {
+            "at_tick": 60,
+            "type": "wan_down",
+            "label": "Upstream cloud POS unreachable"
+          },
+          {
+            "at_tick": 75,
+            "type": "degrade",
+            "target": 0,
+            "latency_ms": 640,
+            "label": "Mirror 1 saturates absorbing redirected load"
+          },
+          {
+            "at_tick": 160,
+            "type": "recover",
+            "target": 0,
+            "latency_ms": 70,
+            "label": "Mirror 1 recovers as traffic rebalances"
+          },
+          {
+            "at_tick": 215,
+            "type": "wan_up",
+            "label": "Cloud POS restored"
+          }
+        ]
+      }
+    }
+  ],
+  "simulation_findings": {
+    "_note": "Results produced by the simulation engine (ui/static/sim-engine.js), which is a line-for-line port of the firmware algorithms. Reproduce with: node benchmarks/tools/verify_sim.mjs and the exp_*.mjs experiments. These are SIMULATED results and are labelled as such wherever they appear in the deck. They are not a substitute for the hardware benchmark.",
+    "primary_metric": {
+      "name": "Goodput",
+      "definition": "Share of all offered requests that received a real answer. Counts timeouts AND 503 rejections as failures.",
+      "why": "Mean latency alone is survivorship-biased. A strategy that lets sessions occupy all 7 ESP32 sockets until new arrivals are refused posts a flattering average precisely because the slow requests were never served. From the client's point of view a 503 and a timeout are the same event: no answer. Goodput is the metric that cannot be gamed this way, and adopting it changed our conclusions - under mean latency Round Robin looked competitive in the factory scenario; under goodput it loses by 15 points."
+    },
+    "headline_finding": {
+      "claim": "Q-learning's advantage is conditional on backend heterogeneity, and we have quantified the threshold.",
+      "detail": "With two backends and six clients, holding everything else constant and sweeping only the latency spread between them, averaged over 8 seeds.",
+      "table": [
+        {
+          "spread": "1x",
+          "backend_b_ms": 60,
+          "round_robin_goodput": 100,
+          "q_learning_goodput": 100,
+          "ema_goodput": 100
+        },
+        {
+          "spread": "2x",
+          "backend_b_ms": 120,
+          "round_robin_goodput": 100,
+          "q_learning_goodput": 100,
+          "ema_goodput": 100
+        },
+        {
+          "spread": "3x",
+          "backend_b_ms": 180,
+          "round_robin_goodput": 100,
+          "q_learning_goodput": 100,
+          "ema_goodput": 100
+        },
+        {
+          "spread": "5x",
+          "backend_b_ms": 300,
+          "round_robin_goodput": 100,
+          "q_learning_goodput": 99.8,
+          "ema_goodput": 99.7
+        },
+        {
+          "spread": "8x",
+          "backend_b_ms": 480,
+          "round_robin_goodput": 71.3,
+          "q_learning_goodput": 99.1,
+          "ema_goodput": 94.8
+        },
+        {
+          "spread": "12x",
+          "backend_b_ms": 720,
+          "round_robin_goodput": 49.8,
+          "q_learning_goodput": 93.7,
+          "ema_goodput": 87.2
+        }
+      ],
+      "interpretation": "Below roughly 5x spread every strategy saturates - the backends are interchangeable, so the routing decision does not matter and Round Robin is the correct engineering choice because it is free. Past 8x the picture inverts sharply: Round Robin collapses to 71% and then 50% goodput because it keeps sending a fixed share of traffic into a backend that cannot absorb it, while Q-learning holds 99% and 94%. This is the honest version of our claim - not 'RL is better', but 'RL earns its complexity exactly when backends diverge, and here is the measured threshold.'",
+      "reproduce": "node benchmarks/tools/exp_heterogeneity.mjs"
+    },
+    "scenario_results": {
+      "factory": {
+        "name": "Smart Factory Sensor Gateway",
+        "seeds": 8,
+        "strategies": {
+          "round_robin": {
+            "goodput_pct": 86.1,
+            "goodput_worst_pct": 84.3,
+            "mean_latency_ms": 270,
+            "p95_latency_ms": 1669,
+            "served": 176,
+            "timeouts": 0.6,
+            "rejected": 27.9,
+            "distribution_pct": [
+              {
+                "name": "Edge Node 1",
+                "share_pct": 29.1
+              },
+              {
+                "name": "Edge Node 2",
+                "share_pct": 28.8
+              },
+              {
+                "name": "Edge Node 3",
+                "share_pct": 28.6
+              }
+            ]
+          },
+          "q_learning": {
+            "goodput_pct": 100,
+            "goodput_worst_pct": 100,
+            "mean_latency_ms": 65,
+            "p95_latency_ms": 100,
+            "served": 205,
+            "timeouts": 0,
+            "rejected": 0,
+            "distribution_pct": [
+              {
+                "name": "Edge Node 1",
+                "share_pct": 91.3
+              },
+              {
+                "name": "Edge Node 2",
+                "share_pct": 3.7
+              },
+              {
+                "name": "Edge Node 3",
+                "share_pct": 5.1
+              }
+            ]
+          },
+          "ema": {
+            "goodput_pct": 96.3,
+            "goodput_worst_pct": 95.6,
+            "mean_latency_ms": 100,
+            "p95_latency_ms": 100,
+            "served": 197,
+            "timeouts": 0,
+            "rejected": 7.6,
+            "distribution_pct": [
+              {
+                "name": "Edge Node 1",
+                "share_pct": 73.9
+              },
+              {
+                "name": "Edge Node 2",
+                "share_pct": 12.6
+              },
+              {
+                "name": "Edge Node 3",
+                "share_pct": 9.8
+              }
+            ]
+          }
+        },
+        "ql_vs_rr_goodput_pts": 13.9,
+        "ql_vs_ema_goodput_pts": 3.7,
+        "best_strategy": "q_learning",
+        "honest_note": "Q-learning wins this scenario on goodput."
+      },
+      "clinic": {
+        "name": "Rural Clinic Telemedicine Kiosk",
+        "seeds": 8,
+        "strategies": {
+          "round_robin": {
+            "goodput_pct": 92,
+            "goodput_worst_pct": 90.7,
+            "mean_latency_ms": 486,
+            "p95_latency_ms": 1456,
+            "served": 109,
+            "timeouts": 0,
+            "rejected": 9.5,
+            "distribution_pct": [
+              {
+                "name": "Records Server A",
+                "share_pct": 47
+              },
+              {
+                "name": "Records Server B (older)",
+                "share_pct": 46.6
+              }
+            ]
+          },
+          "q_learning": {
+            "goodput_pct": 100,
+            "goodput_worst_pct": 100,
+            "mean_latency_ms": 246,
+            "p95_latency_ms": 438,
+            "served": 117,
+            "timeouts": 0,
+            "rejected": 0,
+            "distribution_pct": [
+              {
+                "name": "Records Server A",
+                "share_pct": 91.7
+              },
+              {
+                "name": "Records Server B (older)",
+                "share_pct": 11
+              }
+            ]
+          },
+          "ema": {
+            "goodput_pct": 98.7,
+            "goodput_worst_pct": 97.4,
+            "mean_latency_ms": 305,
+            "p95_latency_ms": 919,
+            "served": 116,
+            "timeouts": 0,
+            "rejected": 1.5,
+            "distribution_pct": [
+              {
+                "name": "Records Server A",
+                "share_pct": 79.7
+              },
+              {
+                "name": "Records Server B (older)",
+                "share_pct": 21.3
+              }
+            ]
+          }
+        },
+        "ql_vs_rr_goodput_pts": 8,
+        "ql_vs_ema_goodput_pts": 1.3,
+        "best_strategy": "q_learning",
+        "honest_note": "Q-learning wins this scenario on goodput."
+      },
+      "retail": {
+        "name": "Retail POS During a Cloud Outage",
+        "seeds": 8,
+        "strategies": {
+          "round_robin": {
+            "goodput_pct": 84.9,
+            "goodput_worst_pct": 84.1,
+            "mean_latency_ms": 227,
+            "p95_latency_ms": 1206,
+            "served": 203,
+            "timeouts": 0,
+            "rejected": 36,
+            "distribution_pct": [
+              {
+                "name": "Local Mirror 1",
+                "share_pct": 42.8
+              },
+              {
+                "name": "Local Mirror 2",
+                "share_pct": 42.6
+              }
+            ]
+          },
+          "q_learning": {
+            "goodput_pct": 74.5,
+            "goodput_worst_pct": 73.6,
+            "mean_latency_ms": 267,
+            "p95_latency_ms": 1275,
+            "served": 178,
+            "timeouts": 0,
+            "rejected": 60.9,
+            "distribution_pct": [
+              {
+                "name": "Local Mirror 1",
+                "share_pct": 69.3
+              },
+              {
+                "name": "Local Mirror 2",
+                "share_pct": 5.7
+              }
+            ]
+          },
+          "ema": {
+            "goodput_pct": 97.2,
+            "goodput_worst_pct": 96.7,
+            "mean_latency_ms": 122,
+            "p95_latency_ms": 100,
+            "served": 232,
+            "timeouts": 0,
+            "rejected": 6.8,
+            "distribution_pct": [
+              {
+                "name": "Local Mirror 1",
+                "share_pct": 24.4
+              },
+              {
+                "name": "Local Mirror 2",
+                "share_pct": 73.2
+              }
+            ]
+          }
+        },
+        "ql_vs_rr_goodput_pts": -10.4,
+        "ql_vs_ema_goodput_pts": -22.7,
+        "best_strategy": "ema",
+        "honest_note": "Q-learning does NOT win this scenario - ema does. Presented as-is."
+      }
+    },
+    "known_weakness": {
+      "title": "Non-stationarity and the exploration floor",
+      "finding": "In the retail scenario Q-learning UNDERPERFORMS Round Robin on goodput (74.5% vs 84.5%, mean of 8 seeds).",
+      "root_cause": "Two things compound. First, epsilon decays from 1.0 to its 0.05 floor in 59 feedback updates; in the retail timeline that happens at roughly tick 40, about 74 updates BEFORE the backend degrades at tick 75. The agent is fully greedy before the world changes, and a 5% exploration rate is slow to discover it. Second, the two retail mirrors start nearly identical (55ms vs 60ms, a 1.09x spread), which by our own heterogeneity result is the regime where there is no signal to learn - so the argmax latches onto one mirror and self-reinforces, concentrating load instead of spreading it.",
+      "evidence": "Raising min_epsilon from 0.05 to 0.15 lifts retail mean goodput from 74.5% to 85.5% across 8 seeds. Worst-seed goodput stays near 75%, so the exploration floor is a partial fix, not a cure.",
+      "we_did_not_hide_this": "This weakness is presented in the deck on its own slide. A load balancer that is only tested where it wins has not been tested.",
+      "reproduce": "node benchmarks/tools/exp_epsilon.mjs",
+      "future_work": [
+        "Epsilon resurgence: when observed reward falls far below the Q-value that predicted it, the policy is stale - temporarily raise epsilon to re-explore. Prototyped and measured: +8.4 points on retail but -1.8 on factory, mean +2.2. Not a clear enough win to justify changing shipped firmware, which is why it is future work and not a result.",
+        "Detect the low-heterogeneity regime at runtime (variance of the reward across backends) and fall back to Round Robin, which is provably optimal when backends are interchangeable.",
+        "Persist the Q-table to NVS so a reboot does not discard what was learned."
+      ]
+    },
+    "seeds_used": [
+      12345,
+      999,
+      4242,
+      777,
+      31337,
+      8080,
+      22222,
+      65535
+    ],
+    "generated_at": "2026-09-17T20:11:55.408Z"
+  }
+}
