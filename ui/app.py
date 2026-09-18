@@ -6,6 +6,7 @@ import base64
 import uuid
 import threading
 import socket
+import csv
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 
@@ -18,6 +19,11 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config['SECRET_KEY'] = 'secret!'
 # Use threading to ensure standard Python threads from server.py can emit events correctly
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+def log_telemetry_to_csv(algorithm_name, timestamp, response_time):
+    with open('results_log.csv', 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([algorithm_name, timestamp, response_time])
 
 def get_local_ip():
     try:
