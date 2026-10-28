@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flashpoint · Global Traffic Operations</title>
+    <title>FlashRoute · Global Traffic Operations</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
-    <link rel="stylesheet" href="/static/flashpoint.css">
+    <link rel="stylesheet" href="/static/flashroute.css">
     <!-- Vendored so the demo still works without venue Wi-Fi -->
     <script src="/static/vendor/chart.umd.min.js"></script>
     <script src="/static/vendor/socket.io.min.js"></script>
@@ -36,12 +36,12 @@
     </svg>
 
     <header class="nav">
-        <a class="brand" href="#live" aria-label="Flashpoint, live traffic">
+        <a class="brand" href="#live" aria-label="FlashRoute, live traffic">
             <svg class="brand-mark" viewBox="0 0 22 22" aria-hidden="true">
                 <rect x="0.5" y="0.5" width="21" height="21" rx="5" fill="#17212B" stroke="#263341" />
                 <path d="M5 11h4l2-5 2 10 2-5h2" fill="none" stroke="#4C9AFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
-            <span class="brand-name">FLASHPOINT</span>
+            <span class="brand-name">FLASHROUTE</span>
             <span class="brand-sub">Global Traffic Operations</span>
         </a>
         <nav class="tabs" aria-label="Sections">
@@ -104,18 +104,21 @@
         <section class="stage" id="stage" aria-label="Traffic map and routing">
             <div class="map-pane" data-map-pane>
                 <div class="map-toolbar">
-                    <p class="map-note">Regions are simulated: each marks one request generator running on this laptop. The gateway's place in the diagram is illustrative.</p>
+                    <p class="map-note">Regions are simulated: each marks one request generator running on this laptop. The ESP32 gateway is drawn at Chennai. Drag the globe to rotate it.</p>
                 </div>
                 <div class="map-controls">
                     <span class="focus-chip" id="focus-chip" hidden>
                         <span id="focus-name"></span>
                         <button class="btn btn--ghost btn--icon btn--sm" type="button" id="focus-clear" aria-label="Clear region focus"><svg class="icon"><use href="#i-x" /></svg></button>
                     </span>
+                    <button class="btn btn--sm" type="button" data-globe-reset title="Turn the globe back so all seven regions face you">
+                        <svg class="icon"><use href="#i-rotate" /></svg><span>Reset view</span>
+                    </button>
                     <button class="btn btn--sm" type="button" id="toggle-anim" aria-pressed="false" title="Stops request animations only. Traffic and counters keep running.">
                         <svg class="icon"><use href="#i-pause" /></svg><span>Pause animations</span>
                     </button>
                 </div>
-                <svg class="geo" data-geo role="img" aria-label="World map with seven simulated client regions"></svg>
+                <svg class="geo" data-geo tabindex="0" role="img" aria-label="Globe with seven simulated client regions. Drag or use the arrow keys to rotate, Home to reset."></svg>
                 <div class="map-labels" data-labels></div>
                 <div class="map-tooltip" data-tooltip hidden></div>
                 <div class="legend" data-legend role="group" aria-label="Focus a region"></div>

@@ -18,7 +18,10 @@ export const REGION_BY_ID = Object.fromEntries(REGIONS.map(r => [r.id, r]));
 
 // Generators whose region is not known (created elsewhere, or before this
 // page existed) are shown under this pseudo-region rather than guessed.
-export const UNASSIGNED = { id: 'unassigned', name: 'Unassigned', city: 'No region set', color: '#8B98A8' };
+// Where the ESP32 gateway is drawn on the globe. A placement, not a measurement.
+export const GATEWAY_SITE = { name: 'ESP32 gateway', city: 'Chennai', lon: 80.27, lat: 13.08 };
+
+export const UNASSIGNED ={ id: 'unassigned', name: 'Unassigned', city: 'No region set', color: '#8B98A8' };
 
 export function regionInfo(id) {
     return REGION_BY_ID[id] || UNASSIGNED;

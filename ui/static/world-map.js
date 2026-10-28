@@ -1,24 +1,30 @@
 // world-map.js
 //
-// The traffic map. Geography on the left (SVG, Equal Earth projection),
-// schematic routing on the right: routes leave each region marker and run
-// into the routing panel, where the ESP32 and the backends live.
+// The traffic globe. Geography on the left (SVG, orthographic projection the
+// operator can rotate by dragging or with the arrow keys), schematic routing
+// on the right. Each region's requests fly a great-circle arc to the ESP32,
+// pinned at Chennai; a single uplink runs from there into the routing panel,
+// where the backends live. Arcs hide where they pass behind the globe.
 //
 // Every animation is a consequence of a telemetry event:
 //   PING     -> pulse from the region to the gateway
 //   REQUEST  -> pulse from the gateway to the backend named in the request
 //   PONG/... -> return pulse, coloured by what actually came back
 // A leg with no event behind it is never drawn. The gateway's position is a
-// diagram, not a location.
+// placement, not a measured location.
 
-import { REGIONS, UNASSIGNED, regionInfo } from './region-config.js';
+import { REGIONS, UNASSIGNED, GATEWAY_SITE, regionInfo } from './region-config.js';
 import { on, state, regionRate, generatorForRegion } from './telemetry.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MAX_PULSES = 260;
-const LEG_MS = { region: 900, bus: 360 };
+const LEG_MS = { region: 1200, bus: 360 };
 const COLORS = { ok: '#E8EDF2', non200: '#D9A441', fail: '#E36D70' };
-const LABEL_SIDE = { na: 'left', sa: 'right', eu: 'up', af: 'left', me: 'up', sas: 'down', ap: 'right', unassigned: 'right' };
+const LABEL_SIDE = { na: 'left', sa: 'right', eu: 'up', af: 'left', me: 'up', sas: 'left', ap: 'right', unassigned: 'right' };
+// Centred on the mean of the seven regions, so all of them start on the near side.
+const HOME_ROTATION = [-17.6, -17];
+const KEY_STEP = 10;            // degrees per arrow key press
+const DRAG_THRESHOLD = 4;       // px before a press becomes a drag, not a click
 
 const el = (tag, attrs = {}, parent) => {
     const n = document.createElementNS(SVG_NS, tag);
@@ -47,9 +53,11 @@ export class TrafficMap {
         this.paused = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         this.focus = null;
         this.highlightPort = null;
-        this.points = {};       // region id -> {x, y}
-        this.routes = {};       // region id -> { path, lut }
+        this.rotation = [...HOME_ROTATION];
+        this.points = {};       // region id -> {x, y, px, py, behind}
+        this.routes = {};       // region id -> { path, lut }: arc to Chennai + uplink (reused so pulses follow a rotating globe)
         this.buses = {};        // port -> { path, lut }
+        this.geoPaths = [];     // [svg path, GeoJSON] pairs redrawn on rotation
         this.tokens = new Map();
         this.pulses = [];
         this.marks = [];        // rings and failure crosses
@@ -87,22 +95,82 @@ export class TrafficMap {
         const legendH = this.legend.offsetHeight;
         this.pane.style.setProperty('--legend-h', `${legendH}px`);
         const w = pr.width, h = pr.height - legendH;
+        // Pane-relative to stage-relative
+        this.size = { w, h, ox: pr.left - sr.left, oy: pr.top - sr.top };
         this.geo.setAttribute('viewBox', `0 0 ${w} ${h}`);
         this.geo.style.height = `${h}px`;
+
         this.drawGeography(w, h);
-
-        // Pane-relative to stage-relative
-        const ox = pr.left - sr.left, oy = pr.top - sr.top;
-        for (const r of REGIONS) {
-            const p = this.projection ? this.projection([r.lon, r.lat]) : [w * (r.lon + 180) / 360, h * (90 - r.lat) / 180];
-            this.points[r.id] = { x: p[0] + ox, y: p[1] + oy, px: p[0], py: p[1] };
-        }
-        this.points.unassigned = { x: ox + 28, y: oy + h - 28, px: 28, py: h - 28 };
-
         this.drawMarkers();
-        this.drawRoutes();
         this.renderLabels();
         this.renderLegend();
+        this.reproject();
+        this.drawBuses();
+    }
+
+    // Everything that moves when the globe turns. Cheap enough to run per frame.
+    reproject() {
+        if (!this.size) return;
+        const { w, h, ox, oy } = this.size;
+        const P = this.projection;
+        let cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2;
+        if (P) {
+            P.rotate(this.rotation);
+            const path = d3.geoPath(P);
+            for (const [node, datum] of this.geoPaths) node.setAttribute('d', path(datum) || '');
+            [cx, cy] = P.translate();
+            R = P.scale();
+        }
+        const centre = [-this.rotation[0], -this.rotation[1]];
+        for (const r of REGIONS) this.points[r.id] = this.siteAt(r, centre, { w, h, ox, oy, cx, cy, R });
+        this.points.unassigned = { x: ox + 28, y: oy + h - 28, px: 28, py: h - 28, behind: false };
+        this.globe = { cx, cy, R };
+        this.gw = this.siteAt(GATEWAY_SITE, centre, { w, h, ox, oy, cx, cy, R });
+
+        this.placeMarkers();
+        this.placeLabels();
+        this.drawRoutes();
+    }
+
+    siteAt(site, centre, { w, h, ox, oy, cx, cy, R }) {
+        const P = this.projection;
+        let px, py, behind = false;
+        if (P) {
+            [px, py] = P([site.lon, site.lat]);
+            behind = d3.geoDistance([site.lon, site.lat], centre) > Math.PI / 2;
+            if (behind) {
+                // Pin to the horizon, in the direction the site lies.
+                const dx = px - cx, dy = py - cy, d = Math.hypot(dx, dy) || 1;
+                px = cx + (dx / d) * R;
+                py = cy + (dy / d) * R;
+            }
+        } else {
+            px = w * (site.lon + 180) / 360;
+            py = h * (90 - site.lat) / 180;
+        }
+        return { x: px + ox, y: py + oy, px, py, behind, lon: site.lon, lat: site.lat };
+    }
+
+    // Great-circle arc lifted off the surface, as stage-relative points.
+    // `vis` is false where the globe is in front of the arc.
+    arcLut(from, to, n = 56) {
+        const { cx, cy, R } = this.globe;
+        const { ox, oy } = this.size;
+        const interp = d3.geoInterpolate(from, to);
+        const lift = Math.min(0.28, 0.06 + d3.geoDistance(from, to) * 0.16);
+        const rot = d3.geoRotation(this.rotation);
+        const rad = Math.PI / 180;
+        const pts = [];
+        for (let i = 0; i <= n; i++) {
+            const t = i / n;
+            const [l, f] = rot(interp(t));
+            const a = R * (1 + lift * Math.sin(Math.PI * t));
+            const x = cx + a * Math.cos(f * rad) * Math.sin(l * rad);
+            const y = cy - a * Math.sin(f * rad);
+            const z = Math.cos(f * rad) * Math.cos(l * rad);
+            pts.push({ x: x + ox, y: y + oy, vis: z > 0 || Math.hypot(x - cx, y - cy) > R });
+        }
+        return pts;
     }
 
     anchor(selector) {
@@ -115,19 +183,30 @@ export class TrafficMap {
 
     drawGeography(w, h) {
         this.geo.innerHTML = '';
+        this.geoPaths = [];
+        this.markerLayer = null;
         if (!this.world || !window.d3 || !window.topojson) { this.projection = null; return; }
         const world = this.world;
         const geoms = world.objects.countries.geometries;
         const land = topojson.merge(world, geoms.filter(g => g.id !== '010'));   // drop Antarctica
         const borders = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
-        const pad = 12;
-        this.projection = d3.geoEqualEarth().fitExtent([[pad, pad], [w - pad, h - pad]], land);
-        const path = d3.geoPath(this.projection);
+        const sphere = { type: 'Sphere' };
+        const pad = 16;
+        this.projection = d3.geoOrthographic().rotate(this.rotation).fitExtent([[pad, pad], [w - pad, h - pad]], sphere);
 
-        el('path', { d: path({ type: 'Sphere' }), class: 'geo-sphere' }, this.geo);
-        el('path', { d: path(d3.geoGraticule10()), class: 'geo-graticule' }, this.geo);
-        el('path', { d: path(land), class: 'geo-land' }, this.geo);
-        el('path', { d: path(borders), class: 'geo-border' }, this.geo);
+        const defs = el('defs', {}, this.geo);
+        const shade = el('radialGradient', { id: 'geo-shade', cx: '38%', cy: '34%', r: '70%' }, defs);
+        el('stop', { offset: '0%', 'stop-color': '#000', 'stop-opacity': 0 }, shade);
+        el('stop', { offset: '70%', 'stop-color': '#000', 'stop-opacity': 0.12 }, shade);
+        el('stop', { offset: '100%', 'stop-color': '#000', 'stop-opacity': 0.45 }, shade);
+
+        const add = (datum, cls) => this.geoPaths.push([el('path', { class: cls }, this.geo), datum]);
+        add(sphere, 'geo-sphere');
+        add(d3.geoGraticule10(), 'geo-graticule');
+        add(land, 'geo-land');
+        add(borders, 'geo-border');
+        add(sphere, 'geo-shade');
+        add(sphere, 'geo-limb');
         this.markerLayer = el('g', { class: 'geo-markers' }, this.geo);
     }
 
@@ -135,8 +214,7 @@ export class TrafficMap {
         if (!this.markerLayer) this.markerLayer = el('g', { class: 'geo-markers' }, this.geo);
         this.markerLayer.innerHTML = '';
         for (const r of [...REGIONS, UNASSIGNED]) {
-            const p = this.points[r.id];
-            const g = el('g', { class: 'marker', 'data-region': r.id, transform: `translate(${p.px},${p.py})` }, this.markerLayer);
+            const g = el('g', { class: 'marker', 'data-region': r.id }, this.markerLayer);
             if (r.id === 'unassigned') {
                 el('rect', { x: -3.5, y: -3.5, width: 7, height: 7, class: 'marker-dot', fill: r.color }, g);
             } else {
@@ -145,39 +223,66 @@ export class TrafficMap {
             }
             el('circle', { r: 14, class: 'marker-hit' }, g);
         }
+        const gw = el('g', { class: 'gw-marker' }, this.markerLayer);
+        el('title', {}, gw).textContent = `${GATEWAY_SITE.name}, drawn at ${GATEWAY_SITE.city}`;
+        el('circle', { r: 11, class: 'gw-halo' }, gw);
+        el('rect', { x: -4.5, y: -4.5, width: 9, height: 9, transform: 'rotate(45)', class: 'gw-dot' }, gw);
         this.syncMarkerState();
+    }
+
+    placeMarkers() {
+        if (!this.markerLayer) return;
+        this.markerLayer.querySelectorAll('.marker').forEach(m => {
+            const p = this.points[m.dataset.region];
+            if (!p) return;
+            m.setAttribute('transform', `translate(${p.px},${p.py})`);
+            m.classList.toggle('is-behind', p.behind);
+        });
+        const gw = this.markerLayer.querySelector('.gw-marker');
+        if (gw && this.gw) {
+            gw.setAttribute('transform', `translate(${this.gw.px},${this.gw.py})`);
+            gw.classList.toggle('is-behind', this.gw.behind);
+        }
     }
 
     drawRoutes() {
         const L = this.routeLayer;
-        L.innerHTML = '';
-        this.routes = {};
-        this.buses = {};
+        L.querySelectorAll('.route, .trunk').forEach(n => n.remove());
         const inlet = this.anchor('[data-anchor="gateway-in"]');
-        const outlet = this.anchor('[data-anchor="gateway-out"]');
-        this.gatewayPoint = inlet;
-        if (!inlet) return;
+        const g = this.gw;
+        this.gatewayPoint = g;
+        if (!g) return;
 
-        // Side-by-side layout: routes run right into the panel. Stacked
-        // layout (narrow screens): the panel is below, so routes run down.
-        const stacked = inlet.y > this.pane.getBoundingClientRect().bottom - this.sr.top - 1;
+        // Uplink: Chennai to the gateway panel. Side-by-side layout runs it
+        // right; the stacked layout (narrow screens) runs it down.
+        let trunk = [];
+        if (inlet) {
+            const stacked = inlet.y > this.pane.getBoundingClientRect().bottom - this.sr.top - 1;
+            const c = stacked
+                ? [g, { x: g.x, y: g.y + (inlet.y - g.y) * 0.6 }, { x: inlet.x, y: inlet.y - (inlet.y - g.y) * 0.4 }, inlet]
+                : [g, { x: g.x + (inlet.x - g.x) * 0.5, y: g.y }, { x: inlet.x - (inlet.x - g.x) * 0.35, y: inlet.y }, inlet];
+            trunk = cubicLut(c, 32);
+            el('path', { d: lutPath(trunk), class: 'trunk' + (g.behind ? ' is-behind' : '') }, L);
+        }
+
         const ids = [...REGIONS.map(r => r.id), 'unassigned'];
-        ids.forEach((id, i) => {
+        for (const id of ids) {
             const p = this.points[id];
-            let d;
-            if (stacked) {
-                const ix = inlet.x + (i - 3) * 4;
-                const dy = inlet.y - p.y;
-                d = `M${p.x},${p.y} C${p.x},${p.y + dy * 0.5} ${ix},${inlet.y - dy * 0.32} ${ix},${inlet.y}`;
-            } else {
-                const iy = inlet.y + (i - 3) * 4;
-                const dx = inlet.x - p.x;
-                d = `M${p.x},${p.y} C${p.x + dx * 0.5},${p.y} ${inlet.x - dx * 0.32},${iy} ${inlet.x},${iy}`;
-            }
-            const path = el('path', { d, class: 'route', 'data-region': id, stroke: regionInfo(id).color }, L);
-            this.routes[id] = { path, lut: sample(path) };
-        });
+            const arc = id === 'unassigned' || !this.projection
+                ? cubicLut([p, { x: p.x, y: g.y }, { x: g.x - 40, y: g.y }, g], 40)
+                : this.arcLut([p.lon, p.lat], [g.lon, g.lat]);
+            const path = el('path', { d: lutPath(arc), class: 'route', 'data-region': id, stroke: regionInfo(id).color }, L);
+            const track = this.routes[id] || (this.routes[id] = {});
+            track.path = path;
+            track.lut = arc.concat(trunk.slice(1));
+        }
+        this.syncRouteState();
+    }
 
+    drawBuses() {
+        const L = this.routeLayer;
+        L.querySelectorAll('.bus').forEach(n => n.remove());
+        const outlet = this.anchor('[data-anchor="gateway-out"]');
         if (!outlet) return;
         this.stage.querySelectorAll('[data-anchor="backend"]').forEach(a => {
             const port = Number(a.dataset.port);
@@ -186,9 +291,34 @@ export class TrafficMap {
             const r = Math.min(8, Math.abs(b.y - outlet.y) / 2);
             const d = `M${outlet.x},${outlet.y} L${outlet.x},${b.y - r} Q${outlet.x},${b.y} ${outlet.x + r},${b.y} L${b.x},${b.y}`;
             const path = el('path', { d, class: 'bus', 'data-port': port }, L);
-            this.buses[port] = { path, lut: sample(path) };
+            const track = this.buses[port] || (this.buses[port] = {});
+            track.path = path;
+            track.lut = sample(path);
         });
         this.syncRouteState();
+    }
+
+    /* ------------------------------------------------------------ *
+     *  Rotation
+     * ------------------------------------------------------------ */
+
+    rotateTo(rotation) {
+        this.rotation = [((rotation[0] + 540) % 360) - 180, Math.max(-80, Math.min(80, rotation[1]))];
+        if (this.rotateQueued) return;
+        this.rotateQueued = true;
+        requestAnimationFrame(() => {
+            this.rotateQueued = false;
+            this.reproject();
+            if (this.tooltipFor) this.showTooltip(this.tooltipFor);
+        });
+    }
+
+    rotateBy(dLon, dLat) {
+        this.rotateTo([this.rotation[0] + dLon, this.rotation[1] + dLat]);
+    }
+
+    resetView() {
+        this.rotateTo([...HOME_ROTATION]);
     }
 
     /* ------------------------------------------------------------ *
@@ -211,20 +341,79 @@ export class TrafficMap {
 
     renderLabels() {
         this.labels.innerHTML = '';
-        const pr = this.pane.getBoundingClientRect();
         for (const r of this.visibleRegions()) {
-            const p = this.points[r.id];
-            const side = LABEL_SIDE[r.id];
             const d = document.createElement('div');
-            d.className = `map-label side-${side}`;
+            d.className = 'map-label';
             d.dataset.region = r.id;
-            d.style.left = `${p.px}px`;
-            d.style.top = `${p.py}px`;
             d.innerHTML = `<span class="ml-name">${r.name}</span><span class="ml-stat" data-stat></span>`;
             this.labels.appendChild(d);
         }
-        this.labels.style.width = `${pr.width}px`;
+        const gl = document.createElement('div');
+        gl.className = 'map-label gw-label';
+        gl.innerHTML = `<span class="ml-name">${GATEWAY_SITE.name}</span><span class="ml-stat">${GATEWAY_SITE.city}</span>`;
+        this.labels.prepend(gl);
+        this.labels.style.width = `${this.size ? this.size.w : this.pane.getBoundingClientRect().width}px`;
+        this.placeLabels();
         this.updateStats();
+    }
+
+    // Labels are placed gateway first, then front-facing regions, then the
+    // far side. Each tries its preferred side, then the others, and takes the
+    // first that stays in the pane and clear of markers and earlier labels.
+    // A far-side label with nowhere to go is hidden (its marker stays).
+    placeLabels() {
+        if (!this.size || !this.globe) return;
+        const items = [];
+        const gl = this.labels.querySelector('.gw-label');
+        if (gl && this.gw) items.push({ d: gl, p: this.gw, prefs: ['right', 'down', 'left', 'up'] });
+        const regionNodes = [...this.labels.querySelectorAll('.map-label[data-region]')]
+            .filter(d => this.points[d.dataset.region])
+            .sort((a, b) => this.points[a.dataset.region].behind - this.points[b.dataset.region].behind);
+        for (const d of regionNodes) {
+            const id = d.dataset.region;
+            const p = this.points[id];
+            const pref = p.behind ? (p.px < this.globe.cx ? 'left' : 'right') : LABEL_SIDE[id];
+            items.push({ d, p, id, prefs: [pref, ...['right', 'left', 'up', 'down'].filter(s => s !== pref)] });
+        }
+
+        // Write classes, then read every size in one layout pass.
+        for (const it of items) {
+            const { d, p, id } = it;
+            d.className = `map-label${id ? '' : ' gw-label'}`;
+            d.classList.toggle('is-behind', p.behind);
+            if (id) {
+                d.classList.toggle('is-idle', !this.regionStatus(id).active);
+                d.classList.toggle('is-dim', !!this.focus && this.focus !== id);
+            }
+            d.style.visibility = '';
+        }
+        for (const it of items) { it.w = it.d.offsetWidth; it.h = it.d.offsetHeight; }
+
+        const { w: W, h: H } = this.size;
+        const hit = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
+        const taken = [...Object.values(this.points), this.gw].filter(Boolean)
+            .map(q => ({ l: q.px - 6, r: q.px + 6, t: q.py - 6, b: q.py + 6, at: q }));
+        const boxFor = (side, { p, w, h }) => {
+            const x = side === 'right' ? p.px + 12 : side === 'left' ? p.px - w - 12 : p.px - w / 2;
+            const y = side === 'up' ? p.py - h - 10 : side === 'down' ? p.py + 10 : p.py - h / 2;
+            return { l: x, r: x + w, t: y, b: y + h };
+        };
+        for (const it of items) {
+            let side = null;
+            for (const s of it.prefs) {
+                const b = boxFor(s, it);
+                if (b.l < 4 || b.r > W - 4 || b.t < 4 || b.b > H - 4) continue;
+                if (taken.some(o => o.at !== it.p && hit(b, o))) continue;
+                side = s;
+                break;
+            }
+            if (!side && it.p.behind) { it.d.style.visibility = 'hidden'; continue; }
+            side = side || it.prefs[0];
+            taken.push(boxFor(side, it));
+            it.d.classList.add(`side-${side}`);
+            it.d.style.left = `${it.p.px}px`;
+            it.d.style.top = `${it.p.py}px`;
+        }
     }
 
     renderLegend() {
@@ -256,6 +445,7 @@ export class TrafficMap {
             const li = this.legend.querySelector(`.legend-item[data-region="${r.id}"] [data-legend-state]`);
             if (li) li.textContent = st.active ? `${regionRate(r.id).toFixed(1)}/s` : 'Idle';
         }
+        this.placeLabels();     // stat text changes label widths
         this.syncMarkerState();
     }
 
@@ -304,15 +494,21 @@ export class TrafficMap {
         if (paused) { this.tokens.clear(); this.pulses = []; this.marks = []; this.clearCanvas(); }
     }
 
-    showTooltip(id, x, y) {
+    showTooltip(id) {
+        const p = this.points[id];
+        if (!p) return;
+        this.tooltipFor = id;
         const r = regionInfo(id);
         const R = state.regions[id] || {};
         const st = this.regionStatus(id);
         const fails = (R.non200 || 0) + (R.timeouts || 0) + (R.errors || 0);
         const last = R.lastAt ? `${Math.max(0, Math.round((Date.now() - R.lastAt) / 1000))} s ago` : 'None yet';
+        const where = id === 'unassigned'
+            ? 'Generators with no region recorded in this browser.'
+            : `Simulated region. Its generator runs on this laptop; ${r.city} only places the marker.${p.behind ? ' Currently on the far side of the globe.' : ''}`;
         this.tooltip.innerHTML = `
             <div class="tt-head"><span class="swatch" style="--c:${r.color}"></span><b>${r.name}</b></div>
-            <p class="tt-note">${id === 'unassigned' ? 'Generators with no region recorded in this browser.' : `Simulated region. Its generator runs on this laptop; ${r.city} only places the marker.`}</p>
+            <p class="tt-note">${where}</p>
             <dl>
                 <div><dt>Generator</dt><dd class="mono">${st.gid || st.text}</dd></div>
                 <div><dt>Requests sent</dt><dd class="num">${(R.sent || 0).toLocaleString()}</dd></div>
@@ -325,28 +521,71 @@ export class TrafficMap {
         this.tooltip.hidden = false;
         const pr = this.pane.getBoundingClientRect();
         const tw = this.tooltip.offsetWidth, th = this.tooltip.offsetHeight;
-        let left = x + 16, top = y - th / 2;
-        if (left + tw > pr.width - 8) left = x - tw - 16;
+        let left = p.px + 16, top = p.py - th / 2;
+        if (left + tw > pr.width - 8) left = p.px - tw - 16;
         top = Math.max(8, Math.min(pr.height - th - 8, top));
         this.tooltip.style.left = `${left}px`;
         this.tooltip.style.top = `${top}px`;
     }
 
+    hideTooltip() {
+        this.tooltip.hidden = true;
+        this.tooltipFor = null;
+    }
+
     bindEvents() {
         const regionFrom = e => e.target.closest('[data-region]')?.dataset.region;
-        const move = e => {
+        const onChrome = e => e.target.closest('.legend, .map-controls, .map-toolbar, .map-tooltip');
+
+        // Drag to rotate. A press that barely moves is still a click.
+        let drag = null;
+        this.pane.addEventListener('pointerdown', e => {
+            if (e.button !== 0 || onChrome(e) || !this.projection) return;
+            drag = { x: e.clientX, y: e.clientY, rot: [...this.rotation], moved: false, id: e.pointerId };
+        });
+        this.pane.addEventListener('pointermove', e => {
+            if (drag && drag.id === e.pointerId) {
+                const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+                if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+                if (!drag.moved) {
+                    drag.moved = true;
+                    this.pane.setPointerCapture(e.pointerId);
+                    this.pane.classList.add('is-dragging');
+                    this.hideTooltip();
+                }
+                const k = 75 / (this.globe?.R || 250);
+                this.rotateTo([drag.rot[0] + dx * k, drag.rot[1] - dy * k]);
+                return;
+            }
             const id = regionFrom(e);
-            if (!id || e.target.closest('.legend-item')) { this.tooltip.hidden = true; return; }
-            const pr = this.pane.getBoundingClientRect();
-            const p = this.points[id];
-            this.showTooltip(id, p ? p.px : e.clientX - pr.left, p ? p.py : e.clientY - pr.top);
+            if (!id || e.target.closest('.legend-item')) { this.hideTooltip(); return; }
+            this.showTooltip(id);
+        });
+        const endDrag = e => {
+            if (!drag || drag.id !== e.pointerId) return;
+            if (drag.moved) {
+                this.pane.classList.remove('is-dragging');
+                if (this.pane.hasPointerCapture(e.pointerId)) this.pane.releasePointerCapture(e.pointerId);
+                this.suppressClick = true;
+                setTimeout(() => { this.suppressClick = false; }, 0);
+            }
+            drag = null;
         };
-        this.pane.addEventListener('mousemove', move);
-        this.pane.addEventListener('mouseleave', () => { this.tooltip.hidden = true; });
+        this.pane.addEventListener('pointerup', endDrag);
+        this.pane.addEventListener('pointercancel', endDrag);
+        this.pane.addEventListener('mouseleave', () => { if (!drag) this.hideTooltip(); });
         this.pane.addEventListener('click', e => {
+            if (this.suppressClick) return;
             const id = regionFrom(e);
             if (id) this.setFocus(id);
         });
+
+        this.geo.addEventListener('keydown', e => {
+            const step = { ArrowLeft: [KEY_STEP, 0], ArrowRight: [-KEY_STEP, 0], ArrowUp: [0, -KEY_STEP], ArrowDown: [0, KEY_STEP] }[e.key];
+            if (step) { e.preventDefault(); this.rotateBy(...step); }
+            else if (e.key === 'Home') { e.preventDefault(); this.resetView(); }
+        });
+        this.stage.querySelector('[data-globe-reset]')?.addEventListener('click', () => this.resetView());
         document.addEventListener('keydown', e => { if (e.key === 'Escape' && this.focus) this.setFocus(this.focus); });
 
         on('request:sent', ({ cid, region, direct }) => this.onSent(cid, region, direct));
@@ -363,6 +602,7 @@ export class TrafficMap {
             this.renderLabels();
             this.renderLegend();
             this.drawMarkers();
+            this.placeMarkers();
         }
     }
 
@@ -376,7 +616,7 @@ export class TrafficMap {
         if (this.tokens.size > MAX_PULSES) return;
         const tok = { cid, region, direct, stage: 'toGateway', port: null, outcome: null, born: performance.now() };
         this.tokens.set(cid, tok);
-        this.leg(this.routes[region].lut, 1, regionInfo(region).color, LEG_MS.region, region, null, () => this.atGateway(tok));
+        this.leg(this.routes[region], 1, regionInfo(region).color, LEG_MS.region, region, null, () => this.atGateway(tok));
     }
 
     onForwarded(cid, port) {
@@ -410,7 +650,7 @@ export class TrafficMap {
         const bus = this.buses[tok.port];
         if (!bus) { tok.stage = 'atBackend'; if (tok.outcome) this.back(tok, false); return; }
         tok.stage = 'toBackend';
-        this.leg(bus.lut, 1, regionInfo(tok.region).color, LEG_MS.bus, tok.region, tok.port, () => {
+        this.leg(bus, 1, regionInfo(tok.region).color, LEG_MS.bus, tok.region, tok.port, () => {
             if (!this.tokens.has(tok.cid)) return;
             tok.stage = 'atBackend';
             if (tok.outcome) this.back(tok, true);
@@ -428,12 +668,13 @@ export class TrafficMap {
         }
         const home = () => {
             if (!route) { this.tokens.delete(tok.cid); return; }
-            this.leg(route.lut, -1, color, LEG_MS.region, tok.region, null, () => {
-                this.ring(this.points[tok.region], color);
+            this.leg(route, -1, color, LEG_MS.region, tok.region, null, () => {
+                const home = this.points[tok.region];
+                if (home && !home.behind) this.ring(home, color);
                 this.tokens.delete(tok.cid);
             }, 0.75);
         };
-        if (bus) this.leg(bus.lut, -1, color, LEG_MS.bus, tok.region, tok.port, home, 0.75);
+        if (bus) this.leg(bus, -1, color, LEG_MS.bus, tok.region, tok.port, home, 0.75);
         else home();
     }
 
@@ -443,6 +684,8 @@ export class TrafficMap {
      * ------------------------------------------------------------ */
 
     flashGateway() {
+        const m = this.markerLayer?.querySelector('.gw-marker');
+        if (m) { m.classList.remove('is-hit'); void m.getBoundingClientRect(); m.classList.add('is-hit'); }
         const g = this.stage.querySelector('[data-gateway]');
         if (!g) return;
         g.classList.remove('is-hit');
@@ -470,9 +713,11 @@ export class TrafficMap {
      *  Canvas primitives
      * ------------------------------------------------------------ */
 
-    leg(lut, dir, color, dur, region, port, done, alpha = 1) {
+    // `track` is a route or bus object; its lut is read every frame, so a
+    // pulse in flight follows the route while the globe is being turned.
+    leg(track, dir, color, dur, region, port, done, alpha = 1) {
         if (this.pulses.length >= MAX_PULSES) { done && done(); return; }
-        this.pulses.push({ lut, dir, color, dur, region, port, done, alpha, t: 0 });
+        this.pulses.push({ track, dir, color, dur, region, port, done, alpha, t: 0 });
         this.start();
     }
 
@@ -532,22 +777,27 @@ export class TrafficMap {
         for (const p of this.pulses) {
             if (this.focus && p.region !== this.focus) continue;
             if (this.highlightPort != null && p.port != null && p.port !== this.highlightPort) continue;
+            const lut = p.track.lut;
+            if (!lut) continue;
             const t = ease(p.t);
             const head = p.dir > 0 ? t : 1 - t;
             const tail = 0.09;
             const from = p.dir > 0 ? Math.max(0, head - tail) : Math.min(1, head + tail);
             const SEG = 6;
-            let prev = at(p.lut, from);
+            let prev = at(lut, from);
             ctx.lineWidth = 1.5;
             for (let i = 1; i <= SEG; i++) {
-                const q = at(p.lut, from + (head - from) * (i / SEG));
-                ctx.strokeStyle = rgba(p.color, p.alpha * (i / SEG));
-                ctx.beginPath();
-                ctx.moveTo(prev.x, prev.y);
-                ctx.lineTo(q.x, q.y);
-                ctx.stroke();
+                const q = at(lut, from + (head - from) * (i / SEG));
+                if (prev.vis && q.vis) {
+                    ctx.strokeStyle = rgba(p.color, p.alpha * (i / SEG));
+                    ctx.beginPath();
+                    ctx.moveTo(prev.x, prev.y);
+                    ctx.lineTo(q.x, q.y);
+                    ctx.stroke();
+                }
                 prev = q;
             }
+            if (!prev.vis) continue;
             ctx.fillStyle = rgba(p.color, p.alpha);
             ctx.beginPath();
             ctx.arc(prev.x, prev.y, 2, 0, Math.PI * 2);
@@ -583,11 +833,34 @@ function sample(path, n = 72) {
     return pts;
 }
 
+// Points along a cubic Bezier, computed directly so routes can be rebuilt
+// on every rotation frame without asking the DOM for path lengths.
+function cubicLut([p0, p1, p2, p3], n = 72) {
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+        const t = i / n, u = 1 - t;
+        const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+        pts.push({ x: a * p0.x + b * p1.x + c * p2.x + d * p3.x, y: a * p0.y + b * p1.y + c * p2.y + d * p3.y });
+    }
+    return pts;
+}
+
 function at(lut, t) {
     const f = Math.max(0, Math.min(1, t)) * (lut.length - 1);
     const i = Math.floor(f), k = f - i;
     const a = lut[i], b = lut[Math.min(lut.length - 1, i + 1)];
-    return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+    return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, vis: a.vis !== false && b.vis !== false };
+}
+
+// SVG path through the visible runs of a lut.
+function lutPath(lut) {
+    let d = '', open = false;
+    for (const q of lut) {
+        if (q.vis === false) { open = false; continue; }
+        d += `${open ? 'L' : 'M'}${q.x.toFixed(1)},${q.y.toFixed(1)}`;
+        open = true;
+    }
+    return d;
 }
 
 const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);

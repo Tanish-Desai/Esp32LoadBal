@@ -1,5 +1,5 @@
 /* ==================================================================
-   FLASHPOINT design system
+   FLASHROUTE design system
 
    One restrained dark surface stack, hairline structure instead of
    floating cards, and colour reserved for meaning:
@@ -166,11 +166,15 @@ button, input, select { font: inherit; color: inherit; }
 .pulse-layer { z-index: 4; }
 
 .map-pane { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
-.geo { display: block; width: 100%; flex: 1 1 auto; }
-.geo-sphere { fill: #0D131A; stroke: none; }
-.geo-graticule { fill: none; stroke: #141D26; stroke-width: .6; }
-.geo-land { fill: #19232E; }
+.geo { display: block; width: 100%; flex: 1 1 auto; cursor: grab; touch-action: none; outline: none; }
+.geo:focus-visible .geo-limb { stroke: var(--accent); }
+.map-pane.is-dragging, .map-pane.is-dragging * { cursor: grabbing !important; user-select: none; }
+.geo-sphere { fill: #0F1720; stroke: none; }
+.geo-graticule { fill: none; stroke: #18232E; stroke-width: .6; }
+.geo-land { fill: #1C2733; }
 .geo-border { fill: none; stroke: #0F161D; stroke-width: .7; }
+.geo-shade { fill: url(#geo-shade); pointer-events: none; }
+.geo-limb { fill: none; stroke: #263341; stroke-width: 1; pointer-events: none; }
 .map-pane[data-geo-error] .geo { background: repeating-linear-gradient(90deg, transparent 0 59px, #141D26 59px 60px); }
 
 .marker { cursor: pointer; }
@@ -180,6 +184,8 @@ button, input, select { font: inherit; color: inherit; }
 .marker.is-active .marker-dot { opacity: 1; }
 .marker.is-active .marker-halo { opacity: .14; }
 .marker.is-dim { opacity: .25; }
+.marker.is-behind { opacity: .55; }
+.marker.is-behind .marker-dot { fill-opacity: .4; }
 .marker.is-hit .marker-halo { animation: halo .6s ease-out; }
 @keyframes halo { 0% { opacity: .5; transform: scale(.6); } 100% { opacity: .14; transform: scale(1); } }
 
@@ -187,6 +193,15 @@ button, input, select { font: inherit; color: inherit; }
 .route.is-active { opacity: .26; }
 .route.is-dim { opacity: .04; }
 .route.is-focus { opacity: .6; }
+.route { stroke-width: 1.1; }
+.trunk { fill: none; stroke: #4C9AFF; stroke-width: 1.4; opacity: .5; }
+.trunk.is-behind { stroke-dasharray: 3 4; opacity: .3; }
+.gw-marker { pointer-events: auto; }
+.gw-dot { fill: #4C9AFF; stroke: var(--bg); stroke-width: 1.5; }
+.gw-halo { fill: #4C9AFF; opacity: .16; }
+.gw-marker.is-behind { opacity: .5; }
+.gw-marker.is-hit .gw-halo { animation: halo .5s ease-out; }
+.gw-label .ml-name { color: #9CC3FF; }
 .bus { fill: none; stroke: #2E3E50; stroke-width: 1; transition: stroke .2s; }
 .bus.is-highlight { stroke: var(--accent); }
 
@@ -201,6 +216,8 @@ button, input, select { font: inherit; color: inherit; }
 .map-label.is-idle .ml-name { color: var(--ink-2); }
 .map-label.is-idle .ml-stat { color: var(--ink-3); }
 .map-label.is-dim { opacity: .25; }
+.map-label.is-behind { opacity: .6; }
+.map-label.is-behind .ml-stat { display: none; }
 .side-right { transform: translate(12px, -50%); }
 .side-left { transform: translate(calc(-100% - 12px), -50%); text-align: right; align-items: flex-end; }
 .side-up { transform: translate(-50%, calc(-100% - 10px)); align-items: center; }

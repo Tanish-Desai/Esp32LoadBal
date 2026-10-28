@@ -1,4 +1,4 @@
-// app.js - FLASHPOINT bootstrap.
+// app.js - FLASHROUTE bootstrap.
 //
 // Wires the views to telemetry.js (the single owner of Socket.IO and the
 // REST API): navigation, the metric strip, and the gateway / backend panel.
@@ -342,4 +342,4 @@ showView();
 renderAll();
 
 // Exposed for operators poking at the console during a demo
-window.flashpoint = { state, api, strategyNames: STRATEGY_NAMES };
+window.flashroute = { state, api, strategyNames: STRATEGY_NAMES };
